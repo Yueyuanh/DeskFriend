@@ -1,6 +1,7 @@
 #include "board/led_status.h"
 
 #include "core/app_state.h"
+#include "usb/usb_link.h"
 
 #include "driver/gpio.h"
 #include "driver/rmt_encoder.h"
@@ -61,6 +62,8 @@ void led_task(void *)
             r = static_cast<uint8_t>(s_flash_r * BRIGHTNESS / 255);
             g = static_cast<uint8_t>(s_flash_g * BRIGHTNESS / 255);
             b = static_cast<uint8_t>(s_flash_b * BRIGHTNESS / 255);
+        } else if (usb_link_connected()) {
+            b = BRIGHTNESS;  // desktop client attached over USB: solid blue
         } else if (state_wifi_connected()) {
             g = BRIGHTNESS;  // connected: solid green
         } else {
@@ -129,7 +132,8 @@ esp_err_t led_status_start()
     if (xTaskCreatePinnedToCore(led_task, "led_status", 3072, nullptr, 2, nullptr, 0) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
-    ESP_LOGI(TAG, "status LED started on GPIO%d (red blink = no Wi-Fi, green = connected)",
+    ESP_LOGI(TAG,
+             "status LED started on GPIO%d (blue = USB client, green = Wi-Fi, red blink = no link)",
              static_cast<int>(LED_GPIO));
     return ESP_OK;
 }

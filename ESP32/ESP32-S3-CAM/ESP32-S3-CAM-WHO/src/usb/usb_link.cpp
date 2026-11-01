@@ -186,6 +186,11 @@ void link_task(void *arg)
 
 } // namespace
 
+bool usb_link_connected()
+{
+    return s_connected;
+}
+
 esp_err_t usb_link_start()
 {
     // Same core as the TinyUSB task: the link only makes short calls into

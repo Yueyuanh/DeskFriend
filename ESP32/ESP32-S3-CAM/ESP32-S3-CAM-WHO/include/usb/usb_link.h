@@ -11,3 +11,7 @@
 //
 // Must be called after uvc_camera_start(): TinyUSB is initialized there.
 esp_err_t usb_link_start();
+
+// True while a host has the CDC device open, i.e. the desktop client (or any
+// serial terminal) is attached. The status LED shows solid blue in that state.
+bool usb_link_connected();

@@ -2,6 +2,15 @@
 
 本文件面向项目维护者，按时间倒序记录主仓库的关键提交信息。
 
+## 2026-11-02 - `a71db5c` `feat(board): show solid blue while the desktop client is attached`
+
+**类型：** ESP32-S3-CAM 固件
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO`（`src/board`、`src/usb`）
+
+- 状态灯新增有线链路状态：桌面客户端打开 CDC 串口后常亮蓝色；断开后回到 Wi-Fi 状态色（已联网绿色、未联网红色闪烁）。
+- `usb_link` 暴露 `usb_link_connected()`，LED 任务只读这个标志，不直接调用 TinyUSB。
+- 固件与客户端 README 补上蓝色状态说明。
+
 ## 2026-11-02 - `46185ce` `feat(board): dim status LED and add LED test command`
 
 **类型：** ESP32-S3-CAM 固件

@@ -37,11 +37,12 @@ ESP32-S3-CAM-WHO/
 │   ├── web/                HTTP 服务 + 网页（index.html 及其生成的头文件）
 │   ├── net/                Wi-Fi 连接与静态 IP
 │   ├── board/              板载 WS2812 状态灯、芯片温度监控
-│   ├── usb/                UVC 有线摄像头（把最新 JPEG 交给 USB 主机）
+│   ├── usb/                UVC 有线摄像头 + CDC 遥测/命令通道
 │   ├── CMakeLists.txt      组件源文件清单与依赖
 │   └── idf_component.yml   组件管理器依赖（esp32-camera、ESP-DL 模型）
 ├── components/
 │   └── usb_device_uvc/     内置的 usb_device_uvc 1.3.1（见“USB 有线摄像头”）
+├── usb_client/             桌面客户端（PySide6 + OpenCV + pyserial）
 ├── include/                公共头文件（按模块分目录）
 │   ├── app_config.h        摄像头引脚、静态 IP、凭据引入
 │   ├── diag_config.h       摄像头诊断开关（正常为 0）
@@ -64,6 +65,7 @@ ESP32-S3-CAM-WHO/
 | Wi-Fi 事件 | `src/net/wifi_manager.cpp` | 事件循环 | 连接、重连、静态 IP 上报 |
 | TinyUSB | `components/usb_device_uvc` | core 0 / 5 | USB 设备栈，处理枚举与控制请求 |
 | UVC 视频 | `components/usb_device_uvc` | core 0 / 4 | 按主机帧率从 app_state 取最新 JPEG 发送 |
+| USB Link | `src/usb/usb_link.cpp` | core 0 / 3 | 500 ms 发一行遥测 JSON，解析主机命令 |
 
 任务之间不直接调用，全部通过 `src/core/app_state.cpp` 的快照/请求接口通信。
 
@@ -101,7 +103,31 @@ OBS 或 VLC 直接打开即可，不需要驱动，也不需要 Wi-Fi。
   挂成 tinyusb 的 INTERFACE 源，PlatformIO 会为同一文件生成两个同名目标而报
   “Two environments with different actions…”，因此本地改为 `PRIVATE`（文件仍编译
   进 tinyusb 库，行为不变）。
-- 后续计划：复合设备再加一路 CDC，把芯片温度、识别角度等状态回传给电脑端程序。
+
+## USB 数据通道（CDC）
+
+同一块板子在 OTG 口上还复合了一路 CDC ACM，电脑会多出一个串口。它和 UVC
+共用一根线，也不依赖 Wi-Fi：
+
+- 设备 → 电脑：每 500 ms 一行 JSON
+  `{"t":43.2,"fps":10.9,"w":320,"h":240,"id":-1,"sim":0.00,"db":0,"faces":[[x,y,w,h,score]]}`，
+  其中 `t` 是芯片温度（取不到时为 `null`），`id`/`sim` 是识别结果，`faces` 为
+  当前帧的人脸框（像素坐标）。
+- 电脑 → 设备：一行一条文本命令，固件在 UART 控制台打印 `RX: <原文>`，并经
+  CDC 回 `ACK <原文>`；`PING` 回 `PONG`。这行日志就是数据链路的验证点。
+
+| 命令 | 作用 |
+|---|---|
+| `FACE 1` / `FACE 0` | 启动 / 停止端侧人脸检测 |
+| `THR <detect> <recognize>` | 设置检测 / 识别阈值（与网页滑块同范围） |
+| `ENROLL` / `CLEAR` | 注册下一张脸 / 清空人脸库 |
+| `SERVO <水平> <俯仰>` | 舵机角度，当前只解析并打印，等接上舵机再驱动 |
+| 其他任意文本 | 原样打印并 `ACK`，用于验证链路 |
+
+- 实现：`src/usb/usb_link.cpp`，描述符在 `components/usb_device_uvc/tusb/` 里
+  在 UVC 之后追加 CDC 功能（IAD + `TUD_CDC_DESCRIPTOR`，端点 0x83/0x82/0x02）。
+- 配套的桌面客户端在 `usb_client/`（PySide6 + OpenCV + pyserial），提供画面、
+  人脸框叠加、温度曲线和命令发送框，用法见该目录的 `README.md`。
 
 ## 灵敏度调节
 

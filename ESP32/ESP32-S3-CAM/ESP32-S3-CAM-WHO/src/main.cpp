@@ -3,6 +3,7 @@
 #include "core/app_state.h"
 #include "core/tuning.h"
 #include "net/wifi_manager.h"
+#include "usb/usb_link.h"
 #include "usb/uvc_camera.h"
 #include "vision/vision_task.h"
 #include "web/web_task.h"
@@ -79,5 +80,8 @@ extern "C" void app_main(void)
     if (uvc_err != ESP_OK) {
         ESP_LOGW(TAG, "USB UVC unavailable (%s), Wi-Fi streaming continues",
                  esp_err_to_name(uvc_err));
+    } else if (usb_link_start() != ESP_OK) {
+        // Telemetry is a convenience; the camera keeps working without it.
+        ESP_LOGW(TAG, "USB CDC telemetry unavailable");
     }
 }

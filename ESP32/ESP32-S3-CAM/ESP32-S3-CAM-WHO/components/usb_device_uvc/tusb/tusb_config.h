@@ -128,6 +128,13 @@ extern "C" {
 #endif
 #endif
 
+// CDC ACM side channel, composed next to the video function. The PC client
+// uses it for telemetry (temperature, face boxes) and commands (servo angles).
+#define CFG_TUD_CDC              1
+#define CFG_TUD_CDC_RX_BUFSIZE   512
+#define CFG_TUD_CDC_TX_BUFSIZE   512
+#define CFG_TUD_CDC_EP_BUFSIZE   64
+
 #define CFG_EXAMPLE_VIDEO_DISABLE_MJPEG (!FORMAT_MJPEG)
 
 #if CONFIG_UVC_SUPPORT_TWO_CAM

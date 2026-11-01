@@ -144,7 +144,15 @@ uint8_t const *tud_descriptor_device_cb(void)
 #define TUD_CAM2_VIDEO_CAPTURE_DESC_LEN    0
 #endif
 
-#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_CAM1_VIDEO_CAPTURE_DESC_LEN + TUD_CAM2_VIDEO_CAPTURE_DESC_LEN)
+#if CFG_TUD_CDC
+// TUD_CDC_DESC_LEN already counts the 8-byte IAD that TUD_CDC_DESCRIPTOR
+// emits, so the CDC function adds no separate association descriptor.
+#define TUD_CDC_FUNCTION_LEN TUD_CDC_DESC_LEN
+#else
+#define TUD_CDC_FUNCTION_LEN 0
+#endif
+
+#define CONFIG_TOTAL_LEN    (TUD_CONFIG_DESC_LEN + TUD_CAM1_VIDEO_CAPTURE_DESC_LEN + TUD_CAM2_VIDEO_CAPTURE_DESC_LEN + TUD_CDC_FUNCTION_LEN)
 
 uint8_t const desc_fs_configuration[] = {
     // Config number, interface count, string index, total length, attribute, power in mA
@@ -242,6 +250,14 @@ uint8_t const desc_fs_configuration[] = {
 #endif
 #endif // CONFIG_UVC_CAM2_MULTI_FRAMESIZE
 #endif // CFG_TUD_CAM2_VIDEO_STREAMING_BULK
+#endif
+
+#if CFG_TUD_CDC
+    // CDC ACM: the host sees a virtual COM port next to the camera. The macro
+    // already emits the IAD (8) + control interface (9) + functional descs +
+    // notification EP (7) + data interface (9) + two bulk EPs (7 + 7).
+    TUD_CDC_DESCRIPTOR(ITF_NUM_CDC, 0, EPNUM_CDC_NOTIF, CDC_NOTIF_EP_SIZE,
+                       EPNUM_CDC_OUT, EPNUM_CDC_IN, CDC_DATA_EP_SIZE),
 #endif
 
 };

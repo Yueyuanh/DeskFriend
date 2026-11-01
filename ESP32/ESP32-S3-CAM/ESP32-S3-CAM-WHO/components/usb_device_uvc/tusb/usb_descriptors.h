@@ -41,6 +41,14 @@
 #define EPNUM_CAM2_VIDEO_IN    0x82
 #endif
 
+/* CDC ACM data link: notification (IN, interrupt), bulk data IN and OUT.
+ * EPNUM_CAM1 uses 0x81, so 0x82/0x83 and 0x02 stay free. */
+#define EPNUM_CDC_NOTIF        0x83
+#define EPNUM_CDC_IN           0x82
+#define EPNUM_CDC_OUT          0x02
+#define CDC_NOTIF_EP_SIZE      8
+#define CDC_DATA_EP_SIZE       64
+
 enum {
 #if (CFG_TUD_VIDEO)
     ITF_NUM_VIDEO_CONTROL,
@@ -49,6 +57,10 @@ enum {
     ITF_NUM_VIDEO_CONTROL_2,
     ITF_NUM_VIDEO_STREAMING_2,
 #endif
+#endif
+#if (CFG_TUD_CDC)
+    ITF_NUM_CDC,
+    ITF_NUM_CDC_DATA,
 #endif
     ITF_NUM_TOTAL
 };

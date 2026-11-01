@@ -2,6 +2,50 @@
 
 本文件面向项目维护者，按时间倒序记录主仓库的关键提交信息。
 
+## 2026-11-02 - `841699c` `docs(agents): move project conventions into AGENT.md`
+
+**类型：** 工程约定
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO`
+
+- 变更记录、仓库安全、常用命令等约定迁入 `AGENT.md`，`CLAUDE.md` 只保留 `@AGENT.md` 引入，其他 agent 工具也能读到同一份规则。
+
+## 2026-11-02 - `751eec6` `feat(usb-client): add desktop client over UVC and CDC`
+
+**类型：** 桌面客户端
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO/usb_client`
+
+- 新增 PySide6 客户端：UVC 实时画面、端侧人脸框叠加、芯片温度曲线、设备状态，以及经 CDC 发送舵机角度/自定义文本的输入框；全程不依赖 Wi-Fi。
+- 自动模式用 ESP32 独有的 480×320 模式认设备，命中后在同一句柄上切到用户选择的分辨率；Windows 只用 DirectShow，避免 Media Foundation 在设备被占用时卡十几秒。
+- 窗口按屏幕可用区域定尺寸并居中，状态栏放进滚动区域，125%/200% 缩放下不再把右栏顶出屏幕或让文字重叠。
+- `build_exe.ps1` 打包单文件 exe（约 97 MB），README 写明 macOS/Linux 打包方式和常见问题。
+
+## 2026-11-02 - `f09ed92` `feat(usb): add CDC telemetry and command channel`
+
+**类型：** ESP32-S3-CAM 固件
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO`（`components/usb_device_uvc`、`src/usb`、`include/usb`）
+
+- UVC 之后复合一路 CDC ACM，同一根 OTG 线上电脑同时看到摄像头和一个串口；每 500 ms 下发一行 JSON（温度、分辨率、帧率、人脸框、识别结果），主机文本命令在 UART 打印 `RX:` 并回 `ACK`/`PONG`。
+- 修复复合设备无法启动（设备管理器 Code 10）：`TUD_CDC_DESC_LEN` 已包含 8 字节 IAD，早先又手写了一个 IAD，导致配置描述符出现两个关联描述符。
+- 实机验证：UVC 摄像头与 COM14 同时枚举，`PING`/`SERVO` 命令有应答，遥测持续收到（约 51.6 °C、11.1 fps）。
+
+## 2026-11-02 - `846fe6a` `feat(vision): web-tunable thresholds and USB resolution sync`
+
+**类型：** 视觉流水线
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO`
+
+- 网页「灵敏度」滑块调整检测阈值（0.20–0.70）与识别阈值（0.30–0.90），写入 NVS，重启保留；新增 `/api/tuning`。
+- 识别改为直接用 `HumanFaceFeat` + `dl::recognition::DataBase` 查询，绕开 `HumanFaceRecognizer` 写死的 0.5 相似度门限。
+- 视觉任务消费 USB 主机提交的帧尺寸请求，在帧间重新初始化传感器并发布新尺寸，Wi-Fi 推流、检测和网页叠加一起切换；只在检测帧上解码，VGA 从约 2.5 fps 提升到约 11 fps。
+
+## 2026-11-02 - `742d38d` `feat(usb): add UVC webcam with host-selectable frame sizes`
+
+**类型：** ESP32-S3-CAM 固件
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO`
+
+- 板子在 OTG Type-C 口上枚举成 UVC 摄像头，电脑无需 Wi-Fi、无需驱动即可打开 MJPEG 画面。
+- 内置 `espressif/usb_device_uvc` 1.3.1；上游 CMakeLists 把 `usb_descriptors.c` 作为 INTERFACE 源发布，PlatformIO 会重复编译同一文件而中止，改为 PRIVATE 后行为不变。
+- 广告 QVGA/HVGA/VGA/SVGA 四种 MJPEG 模式（主机在相机设置里选择）；`camera_manager` 增加 `set_framesize()`，在帧间 deinit/init，失败时回退 QVGA；`app_state` 增加请求槽，保证只有视觉任务操作传感器。
+
 ## 2026-11-02 - `25acdfe` `refactor(esp32-cam): organize sources, docs and tools by module`
 
 **类型：** ESP32-S3-CAM 固件工程整理

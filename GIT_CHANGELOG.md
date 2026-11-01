@@ -2,6 +2,15 @@
 
 本文件面向项目维护者，按时间倒序记录主仓库的关键提交信息。
 
+## 2026-11-02 - `46185ce` `feat(board): dim status LED and add LED test command`
+
+**类型：** ESP32-S3-CAM 固件
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO`（`src/board`、`src/usb`）
+
+- 状态灯亮度从 64/255 降到 32/255（整体减半），夜里不再刺眼。
+- 新增 CDC 命令 `LED <r> <g> <b> [毫秒]`：状态灯以指定颜色亮几秒后恢复 Wi-Fi 状态色，亮度同样按 32/255 缩放；用于在不重新烧录的情况下确认像素通道顺序。
+- 两份 README 补充命令表和状态灯颜色说明。
+
 ## 2026-11-02 - `841699c` `docs(agents): move project conventions into AGENT.md`
 
 **类型：** 工程约定

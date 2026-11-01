@@ -7,6 +7,7 @@
 #include "driver/rmt_tx.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -21,7 +22,16 @@ constexpr gpio_num_t LED_GPIO = GPIO_NUM_48;
 constexpr uint32_t RMT_RESOLUTION_HZ = 10 * 1000 * 1000;  // 0.1 us per tick
 constexpr uint32_t BLINK_MS = 500;
 constexpr uint32_t TICK_MS = 20;
-constexpr uint8_t BRIGHTNESS = 64;  // same level as ESP32-S3-Dual
+// 32/255 is dim but still readable across the room; the pixel sits behind the
+// lens barrel and 64/255 was uncomfortably bright at night.
+constexpr uint8_t BRIGHTNESS = 32;
+constexpr uint32_t DEFAULT_FLASH_MS = 5000;
+
+// Set by led_status_flash() from the USB command task; read by the LED task.
+volatile uint8_t s_flash_r = 0;
+volatile uint8_t s_flash_g = 0;
+volatile uint8_t s_flash_b = 0;
+volatile int64_t s_flash_until_us = 0;
 
 rmt_channel_handle_t s_channel = nullptr;
 rmt_encoder_handle_t s_encoder = nullptr;
@@ -45,7 +55,13 @@ void led_task(void *)
 
     for (;;) {
         uint8_t r = 0, g = 0, b = 0;
-        if (state_wifi_connected()) {
+        if (esp_timer_get_time() < s_flash_until_us) {
+            // Manual colour from the `LED` command, dimmed like the status
+            // colours so the pixel can never be driven brighter than normal.
+            r = static_cast<uint8_t>(s_flash_r * BRIGHTNESS / 255);
+            g = static_cast<uint8_t>(s_flash_g * BRIGHTNESS / 255);
+            b = static_cast<uint8_t>(s_flash_b * BRIGHTNESS / 255);
+        } else if (state_wifi_connected()) {
             g = BRIGHTNESS;  // connected: solid green
         } else {
             const uint32_t now = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -73,6 +89,17 @@ void led_task(void *)
 }
 
 } // namespace
+
+void led_status_flash(uint8_t r, uint8_t g, uint8_t b, uint32_t hold_ms)
+{
+    if (hold_ms == 0) {
+        hold_ms = DEFAULT_FLASH_MS;
+    }
+    s_flash_r = r;
+    s_flash_g = g;
+    s_flash_b = b;
+    s_flash_until_us = esp_timer_get_time() + static_cast<int64_t>(hold_ms) * 1000;
+}
 
 esp_err_t led_status_start()
 {

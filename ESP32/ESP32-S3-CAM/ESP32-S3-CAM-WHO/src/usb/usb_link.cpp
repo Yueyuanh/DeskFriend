@@ -1,5 +1,6 @@
 #include "usb/usb_link.h"
 
+#include "board/led_status.h"
 #include "board/temp_monitor.h"
 #include "core/app_state.h"
 #include "core/tuning.h"
@@ -107,6 +108,19 @@ void handle_command(const char *line)
     } else if (std::strcmp(line, "CLEAR") == 0) {
         state_request_clear();
         state_set_message("正在清空人脸库（USB 控制）");
+    } else if (std::strncmp(line, "LED ", 4) == 0) {
+        // "LED <r> <g> <b> [ms]" drives the status pixel for a few seconds so
+        // the host can check its colour order without reflashing.
+        int r = 0, g = 0, b = 0;
+        int hold_ms = 0;
+        const int matched = std::sscanf(line + 4, "%d %d %d %d", &r, &g, &b, &hold_ms);
+        if (matched >= 3) {
+            led_status_flash(static_cast<uint8_t>(std::clamp(r, 0, 255)),
+                             static_cast<uint8_t>(std::clamp(g, 0, 255)),
+                             static_cast<uint8_t>(std::clamp(b, 0, 255)),
+                             hold_ms > 0 ? static_cast<uint32_t>(hold_ms) : 0);
+            state_set_message("状态灯测试（USB 控制）");
+        }
     } else if (std::strcmp(line, "PING") == 0) {
         send_text("PONG\n");
         return;

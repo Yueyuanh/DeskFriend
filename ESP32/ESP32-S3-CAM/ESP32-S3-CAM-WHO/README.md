@@ -122,7 +122,10 @@ OBS 或 VLC 直接打开即可，不需要驱动，也不需要 Wi-Fi。
 | `THR <detect> <recognize>` | 设置检测 / 识别阈值（与网页滑块同范围） |
 | `ENROLL` / `CLEAR` | 注册下一张脸 / 清空人脸库 |
 | `SERVO <水平> <俯仰>` | 舵机角度，当前只解析并打印，等接上舵机再驱动 |
+| `LED <r> <g> <b> [毫秒]` | 状态灯闪一次指定颜色（默认 5 秒），用来确认像素和通道顺序，亮度与状态灯一致 |
 | 其他任意文本 | 原样打印并 `ACK`，用于验证链路 |
+
+状态灯（GPIO48 WS2812）：未联网红色 500 ms 闪烁，联网后常亮绿色，亮度 32/255。
 
 - 实现：`src/usb/usb_link.cpp`，描述符在 `components/usb_device_uvc/tusb/` 里
   在 UVC 之后追加 CDC 功能（IAD + `TUD_CDC_DESCRIPTOR`，端点 0x83/0x82/0x02）。

@@ -1,7 +1,9 @@
 #include "board/led_status.h"
 #include "board/temp_monitor.h"
 #include "core/app_state.h"
+#include "core/tuning.h"
 #include "net/wifi_manager.h"
+#include "usb/uvc_camera.h"
 #include "vision/vision_task.h"
 #include "web/web_task.h"
 
@@ -49,6 +51,8 @@ extern "C" void app_main(void)
     mount_storage();
 
     ESP_ERROR_CHECK(app_state_init());
+    // Sensitivity sliders live in NVS; load them before the vision task reads.
+    ESP_ERROR_CHECK(tuning_begin());
     // Start the status LED before Wi-Fi so the red blink is visible during the
     // whole association attempt; it turns green once an IP arrives.
     ESP_ERROR_CHECK(led_status_start());
@@ -67,4 +71,13 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "tasks started: vision(core %d, prio %d), web(core %d, prio %d)",
              static_cast<int>(VisionTask_t::kCoreId), static_cast<int>(VisionTask_t::kPriority),
              static_cast<int>(WebTask_t::kCoreId), static_cast<int>(WebTask_t::kPriority));
+
+    // Wired preview for the PC over the OTG Type-C port. Non-fatal on purpose:
+    // the Wi-Fi MJPEG stream is the debugging path and must keep working even
+    // if USB is unplugged or unavailable.
+    esp_err_t uvc_err = uvc_camera_start();
+    if (uvc_err != ESP_OK) {
+        ESP_LOGW(TAG, "USB UVC unavailable (%s), Wi-Fi streaming continues",
+                 esp_err_to_name(uvc_err));
+    }
 }

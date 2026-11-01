@@ -21,6 +21,16 @@ static constexpr char kIndexHtml[] = R"HTML(
     .row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #2c3745;padding:9px 0}.row:last-of-type{border-bottom:0}
     .value{font-variant-numeric:tabular-nums;color:#8ee6ad}.value.warn{color:#f0b4b4}.hint{color:#aab5c2;font-size:.88rem;line-height:1.45}
     button{border:0;border-radius:7px;padding:9px 12px;margin:4px 4px 0 0;background:#3d82f6;color:white;cursor:pointer;font-size:.9rem}button.secondary{background:#485464}button.danger{background:#8a3434}
+    .tune-card{margin-top:16px}
+    .tune-card h2{font-size:1rem;margin:0;font-weight:600}
+    .tune-row{display:grid;grid-template-columns:84px minmax(0,1fr) 46px;align-items:center;gap:12px;margin-top:12px}
+    .tune-row label{font-size:.9rem;color:#d2dae4}
+    .tune-row output{font-variant-numeric:tabular-nums;color:#8ee6ad;text-align:right;font-size:.9rem}
+    input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer}
+    input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:#2c3745}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border:2px solid #10141b;border-radius:50%;background:#3d82f6}
+    input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:#2c3745}
+    input[type=range]::-moz-range-thumb{width:14px;height:14px;border:2px solid #10141b;border-radius:50%;background:#3d82f6}
     .chart-card{margin-top:16px}
     .chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
     .chart-head h2{font-size:1rem;margin:0;font-weight:600}
@@ -35,12 +45,13 @@ static constexpr char kIndexHtml[] = R"HTML(
   <h1>ESP32-S3-CAM 端侧视觉</h1>
   <div class="grid">
     <div class="card">
-      <div class="shot"><img id="frame" src="/stream" alt="实时画面"><svg id="boxes" class="boxes" viewBox="0 0 320 240" preserveAspectRatio="none" aria-hidden="true"></svg><div id="overlay" class="overlay">等待摄像头画面…</div><div id="fpsBadge" class="fps-badge">-- fps</div></div>
-      <p class="hint">MJPEG 实时流，人脸框叠加在画面上。人脸检测与识别都在 ESP32-S3 上运行。</p>
+      <div class="shot"><img id="frame" src="/stream" alt="实时画面"><svg id="boxes" class="boxes" viewBox="0 0 320 240" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg><div id="overlay" class="overlay">等待摄像头画面…</div><div id="fpsBadge" class="fps-badge">-- fps</div></div>
+      <p class="hint">MJPEG 实时流，人脸框叠加在画面上。人脸检测与识别都在 ESP32-S3 上运行；USB 主机切换分辨率时，这里会跟着变。</p>
     </div>
     <div class="card">
       <div class="row"><span>Wi-Fi</span><span id="wifi" class="value">连接中</span></div>
       <div class="row"><span>摄像头</span><span id="cam" class="value">连接中</span></div>
+      <div class="row"><span>分辨率</span><span id="res" class="value">-</span></div>
       <div class="row"><span>推理</span><span id="infer" class="value">运行中</span></div>
       <div class="row"><span>人脸库</span><span id="db" class="value">-</span></div>
       <div class="row"><span>人脸</span><span id="face" class="value">-</span></div>
@@ -53,6 +64,14 @@ static constexpr char kIndexHtml[] = R"HTML(
       <button class="secondary" onclick="post('/api/clear')">清空人脸库</button>
       <p id="message" class="hint"></p>
     </div>
+  </div>
+
+  <div class="card tune-card">
+    <div class="chart-head"><h2>灵敏度</h2><span id="tuneState" class="hint">已保存</span></div>
+    <div class="tune-row"><label for="detThr">检测阈值</label><input id="detThr" type="range" min="0.2" max="0.7" step="0.01" value="0.4"><output id="detThrVal">0.40</output></div>
+    <div class="tune-row"><label for="recThr">识别阈值</label><input id="recThr" type="range" min="0.3" max="0.9" step="0.01" value="0.5"><output id="recThrVal">0.50</output></div>
+    <p class="hint">数值越小越灵敏。检测阈值调低能抓到侧脸和远处的脸；识别阈值调低，没正对镜头时也更容易认成已注册的人，但太低会认错人。拖动后松手即生效，存在板子里，重启不丢。</p>
+    <button class="secondary" onclick="resetTuning()">恢复默认</button>
   </div>
 
   <div class="card chart-card">
@@ -72,6 +91,36 @@ static constexpr char kIndexHtml[] = R"HTML(
       state();
     }
 
+    // ---- sensitivity sliders ----
+    // Debounced so dragging does not send a request per pixel, and quiet for a
+    // moment afterwards so the 300 ms state poll does not yank the thumb back.
+    const detThr=$('detThr'),recThr=$('recThr');
+    let tuningTimer=null,tuningQuietUntil=0;
+    function showTuning(){
+      $('detThrVal').textContent=(+detThr.value).toFixed(2);
+      $('recThrVal').textContent=(+recThr.value).toFixed(2);
+    }
+    function tuningInput(){
+      showTuning();
+      tuningQuietUntil=Date.now()+2500;
+      $('tuneState').textContent='调整中…';
+      clearTimeout(tuningTimer);
+      tuningTimer=setTimeout(()=>tuningSend('/api/tuning?detect='+(+detThr.value).toFixed(2)+'&recognize='+(+recThr.value).toFixed(2)),400);
+    }
+    async function tuningSend(url){
+      try{const j=await (await fetch(url)).json();
+        detThr.value=j.detect;recThr.value=j.recognize;showTuning();
+        $('tuneState').textContent='已保存';
+      }catch(e){$('tuneState').textContent='保存失败';}
+    }
+    function resetTuning(){
+      tuningQuietUntil=Date.now()+2500;
+      $('tuneState').textContent='调整中…';
+      tuningSend('/api/tuning?reset=1');
+    }
+    detThr.addEventListener('input',tuningInput);
+    recThr.addEventListener('input',tuningInput);
+
     async function state(){try{const s=await (await fetch('/api/state',{cache:'no-store'})).json();
       $('wifi').textContent=s.wifi?s.ip:'未连接';$('wifi').className='value'+(s.wifi?'':' warn');
       faceOn=s.face_enabled;
@@ -88,6 +137,13 @@ static constexpr char kIndexHtml[] = R"HTML(
       $('psram').textContent=(s.free_psram/1048576).toFixed(2)+' MB';$('message').textContent=s.message||'';
       if(s.frame_seq!==lastSeq){lastSeq=s.frame_seq;lastSeqAt=Date.now();$('cam').textContent='画面正常';$('cam').className='value';}
       else if(Date.now()-lastSeqAt>5000){$('cam').textContent='无信号';$('cam').className='value warn';}
+      if(s.frame_w&&s.frame_h)$('res').textContent=s.frame_w+' × '+s.frame_h;
+      // Keep the sliders in sync with the device, but never while dragging.
+      if(Date.now()>tuningQuietUntil&&typeof s.detect_thr==='number'){
+        if(Math.abs(+detThr.value-s.detect_thr)>0.004)detThr.value=s.detect_thr;
+        if(Math.abs(+recThr.value-s.recognize_thr)>0.004)recThr.value=s.recognize_thr;
+        showTuning();
+      }
       drawBoxes(s);
     }catch(e){$('wifi').textContent='请求失败';$('wifi').className='value warn';}}
 

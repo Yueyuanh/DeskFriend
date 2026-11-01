@@ -1,7 +1,9 @@
 #include "vision/vision_task.h"
 
 #include "core/app_state.h"
+#include "core/tuning.h"
 #include "vision/camera_manager.h"
+#include "vision/face_recognizer.h"
 
 #include "diag_config.h"
 
@@ -133,6 +135,10 @@ void diag_run_jpeg_regs()
 // Face detection and recognition are throttled; between detections the cached
 // boxes are redrawn on the running stream.
 constexpr uint32_t FACE_DETECT_INTERVAL_MS = 250;
+// At VGA/SVGA one JPEG decode plus detector run costs hundreds of milliseconds.
+// Detecting less often keeps the published (Wi-Fi/UVC) stream at camera speed;
+// the boxes are simply held a little longer.
+constexpr uint32_t LARGE_FRAME_DETECT_INTERVAL_MS = 1000;
 constexpr uint32_t RECOGNIZE_INTERVAL_MS = 1000;
 // Recognition only runs once a second, so keep its result visible between runs
 // instead of flipping the UI back to "未识别" on the very next frame.
@@ -183,12 +189,15 @@ void VisionTask_t::run(void *pvParameters)
 
     state_set_message("正在加载人脸模型");
     auto *face_detect = new HumanFaceDetect(HumanFaceDetect::MSRMNP_S8_V1, false);
-    auto *recognizer = new HumanFaceRecognizer(FACE_DB_PATH, HumanFaceFeat::MFN_S8_V1, true);
-    // The QVGA stream plus indoor lighting gives faces around 80-100 px, which
-    // sits close to the default 0.5 score cut-off. Loosening both stages a
-    // little improves recall without letting obvious false positives through.
-    face_detect->set_score_thr(0.4f, 0);
-    face_detect->set_score_thr(0.4f, 1);
+    auto *recognizer = new FaceRecognizer(FACE_DB_PATH);
+    // Both thresholds are tunable from the web page and remembered in NVS.
+    // The defaults (0.40 / 0.50) are looser than ESP-DL's 0.5 because the QVGA
+    // stream plus indoor lighting gives faces around 80-100 px, which sits
+    // close to the default cut-off.
+    TuningParams tuning = tuning_get();
+    uint32_t applied_tuning_revision = tuning_revision();
+    face_detect->set_score_thr(tuning.detect_score, 0);
+    face_detect->set_score_thr(tuning.detect_score, 1);
     bool has_enrolled_face = recognizer->get_num_feats() > 0;
     state_set_face_db_count(recognizer->get_num_feats());
     state_set_message(has_enrolled_face ? "模型就绪，已加载人脸库" : "模型就绪，请注册人脸");
@@ -201,7 +210,7 @@ void VisionTask_t::run(void *pvParameters)
     float installed_similarity = 0.0f;
     int last_face_count = 0;
     float last_fps = 0.0f;
-    bool frame_size_known = false;
+    uint32_t last_inference_ms = 0;
     DetectionBox held_face_boxes[MAX_DETECTION_BOXES];
     size_t held_face_count = 0;
     uint64_t fps_window_start = esp_timer_get_time();
@@ -212,6 +221,33 @@ void VisionTask_t::run(void *pvParameters)
     uint32_t cam_frames = 0;
 
     for (;;) {
+        // The UVC host picks a resolution; only this task may touch the sensor.
+        // No frame buffer is held here, so deinit + init is safe.
+        int requested_frame_size = -1;
+        if (state_take_frame_size_request(&requested_frame_size)) {
+            const esp_err_t err = camera_manager_set_framesize(
+                static_cast<framesize_t>(requested_frame_size));
+            // Boxes from the previous geometry would be drawn on the new frame.
+            held_face_count = 0;
+            last_face_count = 0;
+            state_set_boxes(nullptr, 0);
+            if (err == ESP_OK) {
+                state_set_message("摄像头分辨率已切换");
+            } else {
+                state_set_message("摄像头分辨率切换失败");
+            }
+        }
+
+        // The web page may have moved the sensitivity sliders while this task
+        // was busy; push the new detector threshold into the model.
+        const uint32_t tuning_now = tuning_revision();
+        if (tuning_now != applied_tuning_revision) {
+            applied_tuning_revision = tuning_now;
+            tuning = tuning_get();
+            face_detect->set_score_thr(tuning.detect_score, 0);
+            face_detect->set_score_thr(tuning.detect_score, 1);
+        }
+
         const uint64_t frame_start = esp_timer_get_time();
 
         camera_fb_t *fb = esp_camera_fb_get();
@@ -224,10 +260,9 @@ void VisionTask_t::run(void *pvParameters)
         // Publish first so the MJPEG stream keeps flowing even when inference
         // is paused from the web UI.
         state_publish_jpeg(fb->buf, fb->len);
-        if (!frame_size_known) {
-            state_set_frame_size(fb->width, fb->height);
-            frame_size_known = true;
-        }
+        // Cheap enough per frame, and it keeps the reported geometry in sync
+        // after a sensor reconfiguration.
+        state_set_frame_size(fb->width, fb->height);
         ++cam_frames;
         const uint64_t cam_elapsed = esp_timer_get_time() - cam_window_start;
         if (cam_elapsed >= FPS_WINDOW_US) {
@@ -249,20 +284,30 @@ void VisionTask_t::run(void *pvParameters)
             continue;
         }
 
-        dl::image::jpeg_img_t jpeg = {.data = fb->buf, .data_len = fb->len};
-        auto img = dl::image::sw_decode_jpeg(jpeg, dl::image::DL_IMAGE_PIX_TYPE_RGB888);
-        esp_camera_fb_return(fb);
-        if (!img.data) {
-            state_set_message("JPEG 解码失败");
-            vTaskDelay(pdMS_TO_TICKS(1));
-            continue;
-        }
-
+        dl::image::img_t img = {};
         const uint32_t now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+        // Skip the expensive decode on frames between detection runs; the JPEG
+        // is already published above, so streaming is not held back by inference.
+        const uint32_t frame_pixels = static_cast<uint32_t>(fb->width) * fb->height;
+        const uint32_t detect_interval_ms = frame_pixels >= 640U * 480U
+                                                ? LARGE_FRAME_DETECT_INTERVAL_MS
+                                                : FACE_DETECT_INTERVAL_MS;
+        const bool detect_due = now_ms - last_face_ms >= detect_interval_ms;
+        if (detect_due) {
+            dl::image::jpeg_img_t jpeg = {.data = fb->buf, .data_len = fb->len};
+            img = dl::image::sw_decode_jpeg(jpeg, dl::image::DL_IMAGE_PIX_TYPE_RGB888);
+        }
+        esp_camera_fb_return(fb);
+
         std::list<dl::detect::result_t> empty_faces;
         std::list<dl::detect::result_t> *faces = &empty_faces;
         bool ran_face = false;
-        if (now_ms - last_face_ms >= FACE_DETECT_INTERVAL_MS) {
+        if (detect_due) {
+            if (!img.data) {
+                state_set_message("JPEG 解码失败");
+                vTaskDelay(pdMS_TO_TICKS(1));
+                continue;
+            }
             faces = &face_detect->run(img);
             last_face_ms = now_ms;
             ran_face = true;
@@ -271,7 +316,7 @@ void VisionTask_t::run(void *pvParameters)
             last_face_count = static_cast<int>(faces->size());
 
             // Cache face boxes; they are redrawn on every frame while the
-            // detector only runs four times a second.
+            // detector only runs a few times a second.
             held_face_count = 0;
             for (const auto &face : *faces) {
                 if (held_face_count >= MAX_DETECTION_BOXES) {
@@ -310,7 +355,7 @@ void VisionTask_t::run(void *pvParameters)
         float similarity = 0.0f;
         if (has_enrolled_face && ran_face && !faces->empty() &&
             now_ms - last_recognition_ms >= RECOGNIZE_INTERVAL_MS) {
-            auto matches = recognizer->recognize(img, *faces);
+            auto matches = recognizer->recognize(img, *faces, tuning.recognize_sim);
             if (!matches.empty()) {
                 installed_identity = matches.front().id;
                 installed_similarity = matches.front().similarity;
@@ -329,6 +374,11 @@ void VisionTask_t::run(void *pvParameters)
         }
 
         const uint32_t elapsed_ms = static_cast<uint32_t>((esp_timer_get_time() - frame_start) / 1000ULL);
+        // The web UI reports inference latency, so only refresh it on frames
+        // where the detector actually ran.
+        if (ran_face) {
+            last_inference_ms = elapsed_ms;
+        }
         ++fps_frames;
         const uint64_t fps_elapsed = esp_timer_get_time() - fps_window_start;
         if (fps_elapsed >= FPS_WINDOW_US) {
@@ -342,12 +392,14 @@ void VisionTask_t::run(void *pvParameters)
             last_log_ms = now_ms;
             ESP_LOGI(TAG, "detect: faces=%d identity=%d sim=%.2f %lu ms %.1f fps",
                      last_face_count, identity, similarity,
-                     static_cast<unsigned long>(elapsed_ms), last_fps);
+                     static_cast<unsigned long>(last_inference_ms), last_fps);
         }
 
-        state_update_detections(last_face_count, identity, similarity, elapsed_ms);
+        state_update_detections(last_face_count, identity, similarity, last_inference_ms);
 
-        heap_caps_free(img.data);
+        if (img.data) {
+            heap_caps_free(img.data);
+        }
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }

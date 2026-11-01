@@ -2,6 +2,7 @@
 
 #include "board/temp_monitor.h"
 #include "core/app_state.h"
+#include "core/tuning.h"
 #include "index_html.h"
 
 #include "esp_heap_caps.h"
@@ -11,6 +12,7 @@
 #include "freertos/task.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 namespace {
 
@@ -31,6 +33,7 @@ esp_err_t send_index(httpd_req_t *req)
 esp_err_t send_state(httpd_req_t *req)
 {
     const VisionSnapshot snapshot = state_snapshot();
+    const TuningParams tuning = tuning_get();
     float chip_celsius = 0.0f;
     const bool has_chip_temp = temp_monitor_latest(&chip_celsius);
     char chip_json[24];
@@ -47,6 +50,7 @@ esp_err_t send_state(httpd_req_t *req)
                              "\"frame_seq\":%lu,\"free_psram\":%u,\"message\":\"%s\","
                              "\"face_enabled\":%s,\"camera_fps\":%.2f,"
                              "\"face_db_count\":%d,"
+                             "\"detect_thr\":%.2f,\"recognize_thr\":%.2f,"
                              "\"chip_temp\":%s,\"camera_temp\":null,"
                              "\"frame_w\":%u,\"frame_h\":%u,\"boxes\":[",
                              snapshot.wifi ? "true" : "false", snapshot.ip, snapshot.face_count,
@@ -56,7 +60,8 @@ esp_err_t send_state(httpd_req_t *req)
                              static_cast<unsigned long>(snapshot.frame_seq),
                              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
                              snapshot.message, snapshot.face_enabled ? "true" : "false",
-                             snapshot.camera_fps, snapshot.face_db_count, chip_json,
+                             snapshot.camera_fps, snapshot.face_db_count,
+                             tuning.detect_score, tuning.recognize_sim, chip_json,
                              static_cast<unsigned>(snapshot.frame_width),
                              static_cast<unsigned>(snapshot.frame_height));
     if (used < 0) {
@@ -115,6 +120,43 @@ esp_err_t set_inference(httpd_req_t *req)
 
     char json[48];
     std::snprintf(json, sizeof(json), "{\"face\":%s}", face ? "true" : "false");
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, json);
+}
+
+// GET /api/tuning?detect=0.35&recognize=0.45 moves the sensitivity sliders.
+// Omitted keys keep their current value; ?reset=1 restores the defaults.
+// Values are clamped by tuning_set(), and the reply carries what was stored.
+esp_err_t set_tuning(httpd_req_t *req)
+{
+    TuningParams params = tuning_get();
+    bool reset = false;
+    char query[96] = {0};
+    char value[16] = {0};
+
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        if (httpd_query_key_value(query, "reset", value, sizeof(value)) == ESP_OK) {
+            reset = value[0] != '0';
+        }
+        if (httpd_query_key_value(query, "detect", value, sizeof(value)) == ESP_OK) {
+            params.detect_score = std::strtof(value, nullptr);
+        }
+        if (httpd_query_key_value(query, "recognize", value, sizeof(value)) == ESP_OK) {
+            params.recognize_sim = std::strtof(value, nullptr);
+        }
+    }
+
+    if (reset) {
+        tuning_reset();
+    } else {
+        tuning_set(params);
+    }
+
+    const TuningParams applied = tuning_get();
+    char json[80];
+    std::snprintf(json, sizeof(json), "{\"detect\":%.2f,\"recognize\":%.2f}",
+                  applied.detect_score, applied.recognize_sim);
+    state_set_message(reset ? "灵敏度已恢复默认" : "灵敏度已更新");
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, json);
 }
@@ -238,6 +280,7 @@ void WebTask_t::run(void *pvParameters)
     httpd_uri_t stream = {.uri = "/stream", .method = HTTP_GET, .handler = send_stream, .user_ctx = nullptr};
     httpd_uri_t temps = {.uri = "/api/temps", .method = HTTP_GET, .handler = send_temps, .user_ctx = nullptr};
     httpd_uri_t inference = {.uri = "/api/inference", .method = HTTP_GET, .handler = set_inference, .user_ctx = nullptr};
+    httpd_uri_t tuning = {.uri = "/api/tuning", .method = HTTP_GET, .handler = set_tuning, .user_ctx = nullptr};
     httpd_uri_t enroll = {.uri = "/api/enroll", .method = HTTP_POST, .handler = request_enroll, .user_ctx = nullptr};
     httpd_uri_t clear = {.uri = "/api/clear", .method = HTTP_POST, .handler = request_clear, .user_ctx = nullptr};
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_http_server, &root));
@@ -246,6 +289,7 @@ void WebTask_t::run(void *pvParameters)
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_http_server, &stream));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_http_server, &temps));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_http_server, &inference));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(s_http_server, &tuning));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_http_server, &enroll));
     ESP_ERROR_CHECK(httpd_register_uri_handler(s_http_server, &clear));
 

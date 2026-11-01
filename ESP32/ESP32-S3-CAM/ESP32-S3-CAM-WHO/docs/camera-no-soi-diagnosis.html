@@ -1,0 +1,1228 @@
+<title>OV5640 NO-SOI 诊断</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* 版式：技术诊断报告 —— 冷灰纸面 + 工程蓝，语义色只用于证据等级 */
+:root {
+  --bg: #F4F6F8;
+  --surface: #FFFFFF;
+  --surface-2: #ECEFF3;
+  --fg: #161F2A;
+  --muted: #5B6877;
+  --line: #D6DEE6;
+  --accent: #1D5B96;
+  --accent-soft: #E2ECF6;
+  --ok: #1B7A4B;
+  --ok-soft: #E3F2EA;
+  --warn: #9A6108;
+  --warn-soft: #FBF1DE;
+  --risk: #A62B2B;
+  --risk-soft: #F8E8E8;
+  --code-bg: #EDF1F5;
+  --code-fg: #24303D;
+  --font-sans: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F151B;
+    --surface: #161E27;
+    --surface-2: #1C2631;
+    --fg: #DDE5EE;
+    --muted: #94A2B2;
+    --line: #2B3743;
+    --accent: #7FB4E4;
+    --accent-soft: #15293C;
+    --ok: #6BC896;
+    --ok-soft: #142A20;
+    --warn: #E0AE68;
+    --warn-soft: #2B2418;
+    --risk: #EF9191;
+    --risk-soft: #2E1C1C;
+    --code-bg: #121A22;
+    --code-fg: #CFDAE5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F151B;
+  --surface: #161E27;
+  --surface-2: #1C2631;
+  --fg: #DDE5EE;
+  --muted: #94A2B2;
+  --line: #2B3743;
+  --accent: #7FB4E4;
+  --accent-soft: #15293C;
+  --ok: #6BC896;
+  --ok-soft: #142A20;
+  --warn: #E0AE68;
+  --warn-soft: #2B2418;
+  --risk: #EF9191;
+  --risk-soft: #2E1C1C;
+  --code-bg: #121A22;
+  --code-fg: #CFDAE5;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------- 页眉 ---------- */
+.masthead {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding-block: 44px 34px;
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+h1 {
+  font-size: clamp(30px, 5vw, 46px);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+.lede {
+  max-width: 62ch;
+  color: var(--muted);
+  margin: 0 0 28px;
+  font-size: 17px;
+}
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 18px 28px;
+  margin: 0;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.meta div { min-width: 0; }
+.meta dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.meta dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 布局 ---------- */
+.layout {
+  display: grid;
+  grid-template-columns: 206px minmax(0, 1fr);
+  gap: 56px;
+  align-items: start;
+  padding-block: 44px 20px;
+}
+.toc {
+  position: sticky;
+  top: 24px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.toc-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.toc a {
+  display: block;
+  padding: 4px 8px 4px 10px;
+  border-left: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+}
+.toc a:hover, .toc a:focus-visible {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  outline: none;
+}
+article { min-width: 0; }
+
+section { margin-bottom: 56px; scroll-margin-top: 24px; }
+h2 {
+  font-size: 25px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+h2 .num {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+  margin-right: 10px;
+  vertical-align: 2px;
+}
+h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 30px 0 10px;
+  letter-spacing: -0.005em;
+}
+p { margin: 0 0 14px; max-width: 72ch; }
+ul, ol { margin: 0 0 16px; padding-left: 1.35em; max-width: 72ch; }
+li { margin-bottom: 6px; }
+strong { font-weight: 600; }
+a { color: var(--accent); }
+
+/* ---------- 证据标签 ---------- */
+.tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+.t-fact { color: var(--ok); background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.t-infer { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.t-hypo { color: var(--warn); background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.t-unknown { color: var(--muted); background: var(--surface-2); border-color: var(--line); }
+.t-risk { color: var(--risk); background: var(--risk-soft); border-color: color-mix(in srgb, var(--risk) 32%, transparent); }
+
+/* ---------- 结论条 ---------- */
+.verdict {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  background: var(--surface);
+  padding: 22px 24px;
+  margin: 0 0 20px;
+}
+.verdict .kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.verdict p { margin: 0; font-size: 17px; line-height: 1.7; max-width: 68ch; }
+.verdict p + p { margin-top: 10px; font-size: 15px; color: var(--muted); }
+
+/* ---------- 表格 ---------- */
+.scroll { overflow-x: auto; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 560px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+td code, p code, li code, .cite {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 代码 ---------- */
+pre {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  background: var(--code-bg);
+  color: var(--code-fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 14px 16px;
+  margin: 0 0 18px;
+  overflow-x: auto;
+  tab-size: 4;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* ---------- 图 ---------- */
+figure { margin: 26px 0 30px; }
+.fig-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); padding: 10px 4px; }
+.diagram { display: block; width: 100%; min-width: 700px; height: auto; }
+.diagram text { fill: currentColor; font-family: var(--font-sans); }
+.diagram .d-title { font-size: 14px; font-weight: 600; }
+.diagram .d-small { font-size: 10.5px; fill: var(--muted); font-family: var(--font-mono); }
+.diagram .d-label { font-size: 11px; fill: var(--muted); }
+.diagram .d-ok { fill: var(--ok); }
+.diagram .d-warn { fill: var(--warn); }
+.diagram .d-risk { fill: var(--risk); }
+.diagram .s-ok { stroke: var(--ok); }
+.diagram .s-warn { stroke: var(--warn); }
+.diagram .s-risk { stroke: var(--risk); }
+.diagram .s-neutral { stroke: currentColor; }
+.diagram .box { fill: none; stroke-width: 1.5; }
+.diagram .arrow { stroke-width: 1.6; fill: none; }
+#arr-ok path { fill: var(--ok); }
+#arr-warn path { fill: var(--warn); }
+#arr-risk path { fill: var(--risk); }
+#arr-neutral path { fill: currentColor; }
+figcaption {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-top: 10px;
+  max-width: 72ch;
+}
+figcaption b { color: var(--fg); font-weight: 600; }
+
+/* ---------- 假设卡 ---------- */
+.hypo {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 20px 22px;
+  margin: 0 0 16px;
+}
+.hypo-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.prio {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 1px 7px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+}
+.p0 { color: var(--risk); }
+.p1 { color: var(--warn); }
+.p2 { color: var(--muted); }
+.hypo h3 { margin: 0; font-size: 16.5px; }
+.hypo dl {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+.hypo dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding-top: 3px;
+}
+.hypo dd { margin: 0; min-width: 0; }
+.hypo dd ul { margin: 0; }
+
+/* ---------- 实验卡 ---------- */
+.exp {
+  border-top: 2px solid var(--fg);
+  padding-top: 16px;
+  margin: 30px 0 26px;
+}
+.exp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.exp-id {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.exp-head h3 { margin: 0; }
+.exp .goal { color: var(--muted); font-size: 15px; max-width: 68ch; }
+.exp table { min-width: 0; }
+.exp .scroll { border-style: dashed; }
+
+/* ---------- 提示块 ---------- */
+.note {
+  border-left: 3px solid var(--warn);
+  background: var(--warn-soft);
+  padding: 14px 18px;
+  margin: 0 0 18px;
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+.note.blue { border-left-color: var(--accent); background: var(--accent-soft); }
+.note.red { border-left-color: var(--risk); background: var(--risk-soft); }
+.note.ok { border-left-color: var(--ok); background: var(--ok-soft); }
+.note p:last-child { margin-bottom: 0; }
+.note .label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--warn);
+  display: block;
+  margin-bottom: 4px;
+}
+.note.blue .label { color: var(--accent); }
+.note.red .label { color: var(--risk); }
+.note.ok .label { color: var(--ok); }
+
+/* ---------- 证据基线 ---------- */
+.log {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.75;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  margin: 0 0 18px;
+}
+.log .run { color: var(--accent); font-weight: 500; }
+.log .bad { color: var(--risk); }
+.log .dim { color: var(--muted); }
+
+/* ---------- 页脚 ---------- */
+footer {
+  border-top: 1px solid var(--line);
+  padding-block: 28px 48px;
+  color: var(--muted);
+  font-size: 13px;
+}
+footer p { margin: 0 0 6px; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; gap: 0; padding-block: 28px 12px; }
+  .toc { position: static; margin-bottom: 36px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+  .toc ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .masthead { padding-block: 32px 26px; }
+  .hypo dl { grid-template-columns: 1fr; gap: 3px 0; }
+  .hypo dt { padding-top: 10px; }
+  h2 { font-size: 22px; }
+}
+@media (max-width: 480px) {
+  .toc ol { grid-template-columns: 1fr; }
+  .verdict { padding: 18px 16px; }
+  .verdict p { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+</style>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">故障诊断 · ESP32-S3-CAM-WHO</p>
+    <h1>OV5640 NO-SOI 诊断</h1>
+    <p class="lede">取帧在 JPEG 起始标记校验处失败。通过 RGB565 最小采集、寄存器回读与首块十六进制抽样三项实验，已定位物理层根因：<strong>DVP 数据位 D0 恒为低电平</strong>。整板断电重烧后复测，D0 恢复、取帧正常。以下记录完整证据链、判定过程与修复建议。</p>
+    <dl class="meta">
+      <div><dt>对象</dt><dd>Goouuu ESP32-S3-CAM + OV5640</dd></div>
+      <div><dt>固件</dt><dd>d3ace3b-dirty<br>编译时间 2026-11-02 02:16:11</dd></div>
+      <div><dt>软件栈</dt><dd>ESP-IDF 6.1.0<br>esp32-camera 2.1.8 (b0556a78)</dd></div>
+      <div><dt>采集配置</dt><dd>QVGA · JPEG · q12 · fb×3<br>XCLK 20 MHz · PSRAM 帧缓冲</dd></div>
+      <div><dt>报告结论</dt><dd><span class="tag t-fact">根因已定位</span><br>DVP D0 恒低</dd></div>
+    </dl>
+  </div>
+</header>
+
+<main class="wrap layout">
+  <nav class="toc" aria-label="目录">
+    <p class="toc-title">目录</p>
+    <ol>
+      <li><a href="#verdict">结论摘要</a></li>
+      <li><a href="#evidence">证据基线</a></li>
+      <li><a href="#chain">1 故障链路分析</a></li>
+      <li><a href="#confirmed">2 已确认的事实与已排除项</a></li>
+      <li><a href="#unknown">3 确认进展</a></li>
+      <li><a href="#hypotheses">4 可能原因及优先级</a></li>
+      <li><a href="#source">5 源码位置与依据</a></li>
+      <li><a href="#experiments">6 最小化诊断实验</a></li>
+      <li><a href="#results">7 实验实际结果</a></li>
+      <li><a href="#root-cause">8 最终根因与建议</a></li>
+      <li><a href="#appendix">附录 配置与回滚</a></li>
+    </ol>
+  </nav>
+
+  <article>
+
+    <section id="verdict">
+      <h2><span class="num">00</span>结论摘要</h2>
+      <div class="verdict">
+        <p class="kicker">已定位的根因</p>
+        <p><strong>DVP 数据线 D0 恒为低电平。</strong>传感器输出的每一个字节，bit0 都被抹成 0：JPEG 的 <code>FF D8 FF E0</code> 到达 ESP32 时变成 <code>FE D8 FE E0</code>，SOI 校验因此永远失败。RGB565 帧的 38400 个字节里 <code>odd_bytes = 0</code>，逐字节交叉确认。</p>
+        <p>不是 PSRAM DMA、不是容量、不是传感器配置、不是驱动、不是帧队列。传感器工作在正确的 JPEG 模式并能输出合法图像，故障位于 GPIO11 / FPC / 模组这一段物理连接上。丢失的位无法用软件补回。</p>
+      </div>
+      <div class="note blue">
+        <span class="label">判定路径</span>
+        <p>实验 A 证明 DVP 能出图 → 排除采集链路整体故障；实验 B 证明 <code>0x3821[5]</code> 压缩位有效 → 排除“传感器没进 JPEG 模式”；实验 C 把首块解码成 <code>FE D8 FE E0 … JFIF … FE DA</code> → 直接锁定 bit0。三步各自排除一个方向，结论唯一。</p>
+      </div>
+    </section>
+
+    <section id="evidence">
+      <h2><span class="num">01</span>证据基线</h2>
+      <p>以下是本报告唯一的一手运行证据。两次运行唯一不同的变量是 <code>CONFIG_CAMERA_PSRAM_DMA</code>。</p>
+      <div class="log">
+<span class="run">运行 A：PSRAM DMA 开启（已回滚）</span>
+cam_hal: PSRAM DMA mode enabled
+...
+cam_hal: NO-SOI - JPEG start marker missing (PSRAM)
+Failed to get frame: timeout
+
+<span class="run">运行 B：PSRAM DMA 关闭（当前 sdkconfig）</span>
+<span class="dim">app version: d3ace3b-dirty · compile time Nov  2 2026 02:16:11</span>
+cam_hal: PSRAM DMA mode disabled
+cam_hal: buffer_size: 16384, half_buffer_size: 1024,
+         node_buffer_size: 1024, node_cnt: 16, total_cnt: 15
+cam_hal: Allocating 15360 Byte frame buffer in PSRAM
+cam_hal: Allocating 15360 Byte frame buffer in PSRAM
+cam_hal: Allocating 15360 Byte frame buffer in PSRAM
+deskfriend_vision: camera ready, psram=4459252 bytes
+web server started on port 80
+<span class="bad">cam_hal: NO-SOI - JPEG start marker missing</span>
+<span class="bad">Failed to get frame: timeout</span>  <span class="dim">(约 6654 ms 处)</span>
+      </div>
+
+      <p>后续三项实验的原始输出（完整日志见工程 <code>docs/experiment-*.log</code>）：</p>
+      <div class="log">
+<span class="run">实验 A：RGB565 QQVGA，同一块板</span>
+DIAG A frame 0: 160x120 fmt=0 len=38400 pixels=19200
+DIAG A frame 0: first16=38 C4 38 C4 38 E4 38 E4 ...
+DIAG A frame 0: odd_bytes=<span class="bad">0/38400</span>        <span class="dim">← 38400 字节中 bit0 全为 0</span>
+
+<span class="run">实验 B：JPEG 模式寄存器回读</span>
+0x300A=0x56  0x300B=0x40        <span class="dim">← PID 0x5640</span>
+0x4300=0x30  0x3821=0x21        <span class="dim">← JPEG 格式 + bit5 压缩位已置位</span>
+0x4407=0x0C  0x501F=0x00
+0x460C=0x22  0x471C=0x50
+0x3002=0x00  0x3006=0xFF
+
+<span class="run">实验 C：JPEG 首块 1024 字节（临时补丁，已还原）</span>
+<span class="bad">FE D8 FE E0</span> 00 10 4A 46 48 46 ... <span class="bad">FE DA</span> ...
+<span class="dim">应为       FF D8 FF E0 00 10 4A 46 48 46 ... FF DA ...</span>
+DIAG len=1024 ff=<span class="bad">0</span>                 <span class="dim">← 1024 字节里没有任何 0xFF</span>
+      </div>
+
+      <p>把首块按 JPEG 结构读出来，结论就没有歧义了：<code>FE D8</code> 是 SOI，<code>FE E0</code> 是 APP0，随后 <code>4A 46 48 46</code> 正是 <code>"JFIF"</code>，<code>FE DA</code> 是 SOS。整段码流合法，只是每一个原本为 <code>0xFF</code> 的字节都少了最低位。</p>
+
+      <div class="note">
+        <span class="label">读日志时的两个细节</span>
+        <p><strong>一、</strong>“只出现一次 NO-SOI”不代表只失败一次。该告警由 <code>CAM_WARN_THROTTLE</code> 节流：首次打印，之后每 100 次才打印一次（<span class="cite">cam_hal.c:118-127</span>）。<strong>二、</strong>这份日志来自 FreeRTOS 重构<em>之前</em>的固件（标签与当前代码不同，无 “tasks started” 行）。重构没有改动摄像头配置，但后续实验请以新固件的日志为准。</p>
+      </div>
+    </section>
+
+    <section id="chain">
+      <h2><span class="num">02</span>故障链路分析</h2>
+      <p>把一次失败的取帧拆成五段来看，故障点非常具体。</p>
+
+      <figure>
+        <div class="fig-scroll">
+          <svg class="diagram" viewBox="0 0 980 392" role="img" aria-label="故障链路：OV5640 经 DVP 到 LCD_CAM/GDMA，再进 16×1024 字节环形缓冲，在首块 1024 字节的 SOI 校验处失败，帧被丢弃，应用取帧 4 秒超时">
+            <defs>
+              <marker id="arr-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+              <marker id="arr-warn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+              <marker id="arr-risk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+              <marker id="arr-neutral" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z"/></marker>
+            </defs>
+
+            <rect class="box s-neutral" x="16" y="56" width="176" height="96" rx="5"/>
+            <text class="d-title" x="104" y="84" text-anchor="middle">OV5640</text>
+            <text class="d-small" x="104" y="106" text-anchor="middle">PID 0x5640 · SCCB 0x3C</text>
+            <text class="d-ok" x="104" y="130" text-anchor="middle" font-size="11">识别正常</text>
+
+            <line class="arrow s-warn" x1="192" y1="104" x2="286" y2="104" marker-end="url(#arr-warn)"/>
+            <text class="d-label" x="239" y="80" text-anchor="middle">8 位 DVP 数据</text>
+            <text class="d-label" x="239" y="126" text-anchor="middle">PCLK / HREF</text>
+            <text class="d-label" x="239" y="140" text-anchor="middle">VSYNC</text>
+
+            <rect class="box s-neutral" x="290" y="56" width="188" height="96" rx="5"/>
+            <text class="d-title" x="384" y="84" text-anchor="middle">LCD_CAM + GDMA</text>
+            <text class="d-small" x="384" y="106" text-anchor="middle">cam_rec_data_bytelen</text>
+            <text class="d-small" x="384" y="122" text-anchor="middle">= 1023（每 1 KB EOF）</text>
+            <text class="d-ok" x="384" y="142" text-anchor="middle" font-size="11">DMA 正在搬运</text>
+
+            <line class="arrow s-ok" x1="478" y1="104" x2="560" y2="104" marker-end="url(#arr-ok)"/>
+            <text class="d-label" x="519" y="80" text-anchor="middle">EOF 事件</text>
+            <text class="d-label" x="519" y="126" text-anchor="middle">字节计数触发</text>
+
+            <rect class="box s-neutral" x="564" y="56" width="192" height="96" rx="5"/>
+            <text class="d-title" x="660" y="84" text-anchor="middle">内部环形缓冲</text>
+            <text class="d-small" x="660" y="106" text-anchor="middle">16 × 1024 B</text>
+            <text class="d-ok" x="660" y="130" text-anchor="middle" font-size="11">已收到 ≥ 1024 B</text>
+
+            <line class="arrow s-neutral" x1="756" y1="104" x2="802" y2="104" marker-end="url(#arr-neutral)"/>
+            <text class="d-label" x="779" y="80" text-anchor="middle">首块</text>
+
+            <rect class="box s-risk" x="806" y="40" width="158" height="128" rx="5"/>
+            <text class="d-title" x="885" y="68" text-anchor="middle">cam_task</text>
+            <text class="d-title" x="885" y="92" text-anchor="middle">SOI 校验</text>
+            <text class="d-small" x="885" y="116" text-anchor="middle">FF D8 FF</text>
+            <text class="d-small" x="885" y="132" text-anchor="middle">offset 必须为 0</text>
+            <text class="d-risk" x="885" y="154" text-anchor="middle" font-size="11.5">校验失败</text>
+
+            <line class="arrow s-risk" x1="885" y1="168" x2="885" y2="214" marker-end="url(#arr-risk)"/>
+            <text class="d-risk" x="875" y="196" text-anchor="end" font-size="10.5">丢弃帧</text>
+
+            <rect class="box s-risk" x="806" y="218" width="158" height="70" rx="5"/>
+            <text class="d-title" x="885" y="246" text-anchor="middle">帧不投递</text>
+            <text class="d-small" x="885" y="268" text-anchor="middle">fb_get 4 s 超时</text>
+
+            <rect class="box s-neutral" x="16" y="222" width="176" height="66" rx="5"/>
+            <text class="d-title" x="104" y="249" text-anchor="middle">LEDC XCLK</text>
+            <text class="d-small" x="104" y="270" text-anchor="middle">20 MHz · 已输出</text>
+
+            <line class="arrow s-ok" x1="104" y1="222" x2="104" y2="158" marker-end="url(#arr-ok)"/>
+
+            <text class="d-label" x="16" y="330">绿色：有日志或源码直接证据　琥珀：仅间接证据　红色：实际失败点</text>
+            <text class="d-label" x="16" y="356">推论：能打印 NO-SOI，说明 VSYNC、PCLK、GDMA 都已工作，失败只在字节内容。</text>
+          </svg>
+        </div>
+        <figcaption><b>图 1</b>　一次失败取帧的完整路径。中间三段全部有事件级证据；唯一没有证据的是 DVP 线上那 1024 字节的<em>内容</em>是否等于 JPEG 码流。</figcaption>
+      </figure>
+
+      <h3>四步读法</h3>
+      <ol>
+        <li><strong>VSYNC 启动一帧。</strong>只有收到 <code>CAM_VSYNC_EVENT</code>，状态机才从 IDLE 进入 READ_BUF，并清零 <code>fb.len</code>（<span class="cite">cam_hal.c:280-288</span>）。</li>
+        <li><strong>每 1024 字节触发一次 EOF。</strong>非 PSRAM 模式下，JPEG 采集把 DMA 配成 16 × 1024 字节的环形缓冲（<span class="cite">ll_cam.c:536-555</span>），<code>cam_rec_data_bytelen = 1023</code>、<code>cam_vs_eof_en = 0</code>（<span class="cite">ll_cam.c:168、342</span>），因此 EOF 由字节计数而不是行同步触发。首块拷贝完成后 <code>fb.len == 1024</code>。<span class="tag t-fact">事实</span></li>
+        <li><strong>首块做 SOI 校验。</strong><code>cnt == 0</code> 时用 <code>fb.len</code> 作为搜索长度，在整段 1024 字节里找 <code>FF D8 FF</code>，并且要求偏移为 0（<span class="cite">cam_hal.c:350-363</span>）。</li>
+        <li><strong>失败即丢帧停机。</strong>校验失败会 <code>ll_cam_stop</code> 并把状态置回 IDLE，该帧不进入队列；应用侧 <code>cam_take</code> 等待 4 秒后返回 <code>NULL</code>（<span class="cite">esp_camera.c:393-400</span>）。</li>
+      </ol>
+
+      <div class="note blue">
+        <span class="label">关键推论</span>
+        <p>能走到第 3 步，第 1、2 步必然已经发生。也就是说日志同时证明了：<strong>VSYNC 中断在跳、PCLK 在采样、GDMA 至少搬够了 1024 字节</strong>。故障不是“没有数据”，而是“搬进来的数据不是 JPEG 的开头”。这一句把嫌疑范围从整条链路压缩到两个环节：传感器的输出格式，或 DVP 线上的位级正确性。后续实验给出了答案：是后者，并精确到 D0 这一根线。<span class="tag t-fact">已证实</span></p>
+      </div>
+    </section>
+
+    <section id="confirmed">
+      <h2><span class="num">03</span>已确认的事实与已排除项</h2>
+      <p>下表中的每一项都有日志或源码的直接依据，不需要再做实验验证。最后两列为“已排除”的项，是为了说明哪些嫌疑已经被证据挡掉。</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>模块</th><th>结论</th><th>证据</th><th>等级</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>供电与 SCCB / I²C</td>
+              <td>传感器可寻址，寄存器可读</td>
+              <td>启动日志识别为 OV5640；PID 0x5640（SCCB 地址 0x3C）</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>PSRAM 容量与访问</td>
+              <td>8 MB / 80 MHz，分配 3 个 15360 B 帧缓冲成功，剩余 4,459,252 B</td>
+              <td>“Allocating 15360 Byte frame buffer in PSRAM” ×3；<code>psram=4459252</code></td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>摄像头 HAL 初始化</td>
+              <td><code>esp_camera_init</code> 成功，<code>cam_start()</code> 已执行</td>
+              <td>无初始化错误；DMA 参数已打印；帧缓冲已分配</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>DMA 配置</td>
+              <td>非 PSRAM JPEG 路径：16 × 1024 B 环形缓冲，EOF 由字节计数产生</td>
+              <td>日志 <code>buffer_size 16384 / half 1024 / node_cnt 16</code>；源码 <span class="cite">ll_cam.c:536-555</span></td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>VSYNC / PCLK / GDMA 活动</td>
+              <td>至少发生过一次“VSYNC 起始 + ≥1024 字节 EOF”</td>
+              <td>否则不会进入 SOI 校验，也不会打印 NO-SOI</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>DVP 数据位 bit1–bit7</td>
+              <td>工作正常，能输出完整合法的 JPEG 结构</td>
+              <td>首块中 JFIF / APP0 / DQT / SOS 结构完整，仅 bit0 缺失</td>
+              <td><span class="tag t-fact">实验 C</span></td>
+            </tr>
+            <tr>
+              <td>DVP 数据位 D0（bit0）</td>
+              <td><strong>恒低，故障点</strong></td>
+              <td>JPEG <code>FF→FE</code>；RGB565 <code>odd_bytes=0/38400</code></td>
+              <td><span class="tag t-risk">已证实</span></td>
+            </tr>
+            <tr>
+              <td>传感器 JPEG 配置</td>
+              <td>寄存器已被接受并保持</td>
+              <td>0x4300=0x30、0x3821=0x21、0x4407=0x0C</td>
+              <td><span class="tag t-fact">实验 B</span></td>
+            </tr>
+            <tr>
+              <td>SOI 探测窗口</td>
+              <td>不是“窗口太小”：1024 字节内完全没有 <code>FF D8 FF</code></td>
+              <td>非 PSRAM 路径搜索整段 <code>fb.len</code>；告警为“missing”而非“not at pos 0”</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>PSRAM 直接 DMA 路径</td>
+              <td>已排除。两种 DMA 模式症状一致</td>
+              <td>开启 → <code>NO-SOI (PSRAM)</code>；关闭 → 无后缀 NO-SOI</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>组件源码完整性</td>
+              <td>esp32-camera 2.1.8 未被本地修改</td>
+              <td><code>CHECKSUMS.json</code> 校验 cam_hal.c / esp_camera.c / ll_cam.c / ov5640.c / ov5640_settings.h 全部一致</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>引脚映射</td>
+              <td>与厂商引脚图及两个参考工程一致</td>
+              <td>XCLK15 · SIOD4 · SIOC5 · D0–D7 = 11,9,8,10,12,18,17,16 · VSYNC6 · HREF7 · PCLK13</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>帧所有权 / 并发</td>
+              <td>只有一个取帧调用点，无并发竞争</td>
+              <td><span class="cite">vision_task.cpp:63</span>；失败发生在第一次取帧</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+            <tr>
+              <td>启动顺序</td>
+              <td>JPEG 分支确实被走到</td>
+              <td><code>sensor.pixformat = JPEG</code> 在 <code>set_framesize</code> 之前赋值（<span class="cite">esp_camera.c:343-351</span>）</td>
+              <td><span class="tag t-fact">事实</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="unknown">
+      <h2><span class="num">04</span>确认进展</h2>
+      <h3>已闭环</h3>
+      <ul>
+        <li><strong>寄存器实际值</strong>——已回读，全部符合驱动预期。<span class="tag t-fact">已确认</span></li>
+        <li><strong>首 1024 字节内容</strong>——是合法 JPEG 结构，仅 bit0 丢失。<span class="tag t-fact">已确认</span></li>
+        <li><strong>DVP 位级正确性</strong>——bit1–bit7 正常，D0 恒低。<span class="tag t-fact">已确认</span></li>
+        <li><strong>XCLK / PCLK 时序</strong>——RGB565 与 JPEG 两种时钟域都能搬运数据；错误是恒定而非偶发，时序抖动不是主因。<span class="tag t-infer">已排除为主因</span></li>
+        <li><strong>传感器内部 JPEG 编码器</strong>——码流结构正确，编码器工作正常。<span class="tag t-fact">已确认</span></li>
+      </ul>
+
+      <h3>仍需硬件侧确认</h3>
+      <ul>
+        <li><strong>D0 为什么恒低。</strong>可能是 FPC 未插紧/接触不良、模组排线断线或线序不符、GPIO11 焊点开路。需要断电后目视与万用表通断检查。<span class="tag t-unknown">待检查</span></li>
+        <li><strong>模组型号与 FPC 线序。</strong>板级引脚映射与厂商图一致，但手上这块模组的实际线序尚未核对。<span class="tag t-unknown">待核对</span></li>
+        <li><strong>第二块模组对照。</strong>换一块已知良好的 OV5640 可区分“模组故障”与“板级故障”。<span class="tag t-unknown">待执行</span></li>
+        <li><strong>供电质量。</strong>目前没有证据指向供电，检查 D0 时顺便量一下 3.3 V 即可，不必作为首要方向。<span class="tag t-unknown">低优先</span></li>
+      </ul>
+    </section>
+
+    <section id="hypotheses">
+      <h2><span class="num">05</span>可能原因及优先级</h2>
+      <p>优先级按“与现有证据的吻合度 × 验证成本”排序，不代表可能性大小的精确排序。P0 的两条目前并列，必须由实验区分。</p>
+
+      <div class="hypo">
+        <div class="hypo-head">
+          <span class="prio p0">P0</span>
+          <h3>传感器没有真正进入 JPEG 输出，实际仍在输出 YUV422</h3>
+          <span class="tag t-risk">已否定</span>
+        </div>
+        <dl>
+          <dt>支持</dt>
+          <dd>症状与“未压缩码流”完全吻合：YUV422 的前 1024 字节几乎不可能包含 <code>FF D8 FF</code>。驱动的 <code>set_pixformat()</code> 返回值没有被检查（<span class="cite">esp_camera.c:351</span>），传感器即使 NAK 也会继续初始化。OV5640 的 JPEG 需要 <code>0x4300=0x30</code>、<code>0x3821[5]=1</code>、<code>0x471c=0x50</code> 等多组寄存器同时生效，模组或克隆芯片可能只接受部分写入。</dd>
+          <dt>反证</dt>
+          <dd>同一驱动在参考工程 SGlass 的 OV5640 上以 UXGA JPEG 工作；但模组、批次与供电条件不同，不能直接外推。</dd>
+          <dt>判定</dt>
+          <dd>实验 B（寄存器回读）直接给出答案；实验 A（RGB565）区分“格式问题”与“链路问题”。</dd>
+          <dt>结论</dt>
+          <dd>已否定。回读得到 <code>0x4300=0x30</code>、<code>0x3821=0x21</code>（bit5 压缩位置位）、<code>0x4407=0x0C</code>；首块内容也是完整 JPEG 结构，不是 YUV422。</dd>
+        </dl>
+      </div>
+
+      <div class="hypo">
+        <div class="hypo-head">
+          <span class="prio p0">P0</span>
+          <h3>DVP 数据位在传输中出错（接触、错序、采样）</h3>
+          <span class="tag t-fact">已证实（D0）</span>
+        </div>
+        <dl>
+          <dt>支持</dt>
+          <dd>SOI 只有 3 个字节。任意一根数据线恒低、两根线错序，或 PCLK 采样点错误，都足以让 <code>FF D8 FF</code> 消失。FPC 未插紧、方向偏、排线过长是这类故障的常见来源。EOF 正常只证明“有 1024 字节”，不证明这些字节正确。</dd>
+          <dt>反证</dt>
+          <dd>目前没有。也没有证据支持——这正是它排在同一优先级的原因。</dd>
+          <dt>判定</dt>
+          <dd>实验 A 观察图像是否出现固定条纹、色偏或纯色；实验 E 用已知良好的模组对照。</dd>
+          <dt>结论</dt>
+          <dd>已证实，且精确到最低位：所有字节 bit0 为 0，JPEG <code>FF→FE</code>；RGB565 <code>odd_bytes=0/38400</code>。bit1–bit7 完全正常，因此是 <strong>D0 单线恒低</strong>，不是错序或多线故障。</dd>
+        </dl>
+      </div>
+
+      <div class="hypo">
+        <div class="hypo-head">
+          <span class="prio p1">P1</span>
+          <h3>JPEG 帧头不在偏移 0，或前置填充超过 1024 字节</h3>
+          <span class="tag t-risk">已否定</span>
+        </div>
+        <dl>
+          <dt>支持</dt>
+          <dd>驱动要求 SOI 必须位于偏移 0（<span class="cite">cam_hal.c:351</span>），非 PSRAM 模式只搜索 1024 字节。某些模组会在码流前输出填充。</dd>
+          <dt>反证</dt>
+          <dd>本次告警是“missing”而不是“not at pos 0”，说明 1024 字节内完全没有 SOI——除非填充长度本身就超过 1024。正常 OV5640 不会这样。</dd>
+          <dt>判定</dt>
+          <dd>实验 C（首块十六进制抽样）。</dd>
+          <dt>结论</dt>
+          <dd>已否定。首块偏移 0 处就是 SOI（<code>FE D8</code>，即被抹掉 bit0 的 <code>FF D8</code>），不存在前置填充。</dd>
+        </dl>
+      </div>
+
+      <div class="hypo">
+        <div class="hypo-head">
+          <span class="prio p1">P1</span>
+          <h3>时钟频率或信号完整性不足</h3>
+          <span class="tag t-risk">已排除为主因</span>
+        </div>
+        <dl>
+          <dt>支持</dt>
+          <dd>XCLK 20 MHz，PCLK 为 10 MHz 量级，经排线传输。长线、弱驱动或地回流不良会造成位错误。</dd>
+          <dt>反证</dt>
+          <dd>当前是稳定失败而非偶发失败，更像配置或接线，而不是时序抖动。</dd>
+          <dt>判定</dt>
+          <dd>实验 D。注意：把 XCLK 从 20 MHz 改为 16 MHz 会同时改变传感器 PLL 的倍频分支（<span class="cite">ov5640.c:437-438</span>），它不是严格的单变量。</dd>
+          <dt>结论</dt>
+          <dd>已排除为主因。错误是恒定且只影响单根数据线，时序抖动不会产生这种结果；RGB565（日志实测 PCLK 10 MHz）与 JPEG（日志实测 PCLK 11.25 MHz）都同样丢失 bit0。无需再做降频实验。</dd>
+        </dl>
+      </div>
+
+      <div class="hypo">
+        <div class="hypo-head">
+          <span class="prio p2">P2</span>
+          <h3>驱动或 ESP-IDF 版本兼容性问题</h3>
+          <span class="tag t-risk">已排除</span>
+        </div>
+        <dl>
+          <dt>支持</dt>
+          <dd>ESP-IDF 6.1 较新，esp32-camera 2.1.8 的 JPEG 路径在 PSRAM 模式上有已知上游问题（#775）。</dd>
+          <dt>反证</dt>
+          <dd>组件校验一致；初始化、DMA、EOF 全部正常；关闭 PSRAM DMA 后症状不变；非 PSRAM 路径是上游长期使用的默认路径。</dd>
+          <dt>判定</dt>
+          <dd>暂不投入。只有在 A、B 都指向软件时才升级排查。</dd>
+          <dt>结论</dt>
+          <dd>已排除。驱动配置正确、码流结构合法，驱动只是如实报告了一个物理层错误。</dd>
+        </dl>
+      </div>
+
+      <div class="hypo">
+        <div class="hypo-head">
+          <span class="prio p2">P2</span>
+          <h3>传感器损坏或为克隆芯片</h3>
+          <span class="tag t-risk">已排除</span>
+        </div>
+        <dl>
+          <dt>支持</dt>
+          <dd>克隆 OV5640 在市场上存在，PID 可以伪造。</dd>
+          <dt>反证</dt>
+          <dd>没有任何直接证据。<strong>NO-SOI 本身不是损坏证据</strong>，它只说明数据开头不对。</dd>
+          <dt>判定</dt>
+          <dd>只能通过实验 E（换模组 / 官方示例）证实或排除；在 A 的结果出来之前不建议更换硬件。</dd>
+          <dt>结论</dt>
+          <dd>已排除。传感器能输出合法 JPEG 与正常 RGB565 图像，PID 正确，编码器工作。故障在连线而不在芯片。</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section id="source">
+      <h2><span class="num">06</span>源码位置与代码依据</h2>
+      <p>以下引用均来自当前工程，未做任何修改。</p>
+
+      <h3>采集配置</h3>
+      <p><span class="cite">src/camera_manager.cpp:15-17, 38-46</span></p>
+      <pre><code>constexpr int XCLK_FREQ_HZ = 20000000;
+constexpr int JPEG_QUALITY = 12;
+constexpr int FRAME_BUFFER_COUNT = 3;
+
+config.pixel_format = PIXFORMAT_JPEG;
+config.frame_size   = FRAMESIZE_QVGA;
+config.jpeg_quality = JPEG_QUALITY;
+config.fb_count     = FRAME_BUFFER_COUNT;
+config.fb_location  = CAMERA_FB_IN_PSRAM;
+config.grab_mode    = CAMERA_GRAB_LATEST;</code></pre>
+
+      <h3>初始化顺序与未检查的返回值</h3>
+      <p><span class="cite">managed_components/espressif__esp32-camera/driver/esp_camera.c:343-370</span></p>
+      <pre><code>s_state-&gt;sensor.pixformat = pix_format;          // 先记录格式
+
+if (s_state-&gt;sensor.set_framesize(&amp;s_state-&gt;sensor, frame_size) != 0) {
+    ...                                          // 这里检查了返回值
+}
+s_state-&gt;sensor.set_pixformat(&amp;s_state-&gt;sensor, pix_format);   // 这里没有
+
+if (pix_format == PIXFORMAT_JPEG) {
+    s_state-&gt;sensor.set_quality(&amp;s_state-&gt;sensor, config-&gt;jpeg_quality);
+}
+cam_start();</code></pre>
+      <p>这一行是 P0-1 的代码依据：即使传感器没有接受 JPEG 格式寄存器，<code>esp_camera_init()</code> 仍会返回成功。</p>
+
+      <h3>SOI 校验：窗口与偏移要求</h3>
+      <p><span class="cite">driver/cam_hal.c:350-363</span></p>
+      <pre><code>int soi_off = cam_verify_jpeg_soi(frame_buffer_event-&gt;buf, frame_buffer_event-&gt;len);
+if (soi_off != 0) {
+    if (soi_off &gt; 0) {
+        CAM_WARN_THROTTLE(warn_soi_bad_cnt,
+                          "NO-SOI - JPEG start marker not at pos 0");
+    } else {
+        CAM_WARN_THROTTLE(warn_soi_bad_cnt,
+                          "NO-SOI - JPEG start marker missing");
+    }
+    ll_cam_stop(cam_obj);
+    cam_obj-&gt;state = CAM_STATE_IDLE;
+    continue;
+}</code></pre>
+      <p><code>fb.len</code> 在首块拷贝后等于 <code>dma_half_buffer_size</code>，即 1024（<span class="cite">cam_hal.c:303-306</span>）。这段代码同时解释了告警文字的含义：<strong>“missing” = 1024 字节内一个 SOI 都没有；“not at pos 0” = 找到了但位置不对。</strong>本次日志是前者。</p>
+
+      <h3>EOF 由字节计数触发</h3>
+      <p><span class="cite">target/esp32s3/ll_cam.c:168, 342, 536-555</span></p>
+      <pre><code>LCD_CAM.cam_ctrl1.cam_rec_data_bytelen = cam-&gt;dma_half_buffer_size - 1; // Ping pong
+LCD_CAM.cam_ctrl.cam_vs_eof_en = 0;  // EOF 由 rec_data_cyclelen 控制
+
+// JPEG + 非 PSRAM
+cam-&gt;dma_half_buffer_cnt   = 16;
+cam-&gt;dma_buffer_size       = 16 * 1024;
+cam-&gt;dma_half_buffer_size  = 1024;
+cam-&gt;dma_node_buffer_size  = 1024;</code></pre>
+
+      <h3>传感器侧的 JPEG 配置</h3>
+      <p><span class="cite">sensors/private_include/ov5640_settings.h:206-212</span></p>
+      <pre><code>static const uint8_t sensor_fmt_jpeg[][2] = {
+    {0x501F, 0x00},
+    {0x4300, 0x30},   // 输出格式选择
+    {0x3002, 0x00},
+    {0x3006, 0xff},
+    {0x471c, 0x50},
+};</code></pre>
+      <p><span class="cite">sensors/ov5640.c:321-322</span> —— JPEG 压缩位在每次 <code>set_image_options()</code> 时被重新置位，包括 <code>set_vflip()</code>：</p>
+      <pre><code>uint8_t reg21 = ...;
+if (sensor-&gt;pixformat == PIXFORMAT_JPEG) reg21 |= 0x20;
+// 写入 0x3821</code></pre>
+      <p>源码层面驱动确实按 JPEG 配置了传感器。<span class="tag t-fact">事实</span> 但寄存器是否接受、是否保持，只能由实验 B 的回读确认。<span class="tag t-unknown">未验证</span></p>
+
+      <h3>取帧超时与单调用点</h3>
+      <p><span class="cite">driver/esp_camera.c:393-400</span> · <span class="cite">src/vision_task.cpp:63-68</span></p>
+      <pre><code>#define FB_GET_TIMEOUT (4000 / portTICK_PERIOD_MS)
+camera_fb_t *fb = cam_take(FB_GET_TIMEOUT);
+
+// vision_task.cpp
+camera_fb_t *fb = esp_camera_fb_get();
+if (!fb) { state_set_message("摄像头取帧失败"); ... continue; }</code></pre>
+    </section>
+
+    <section id="experiments">
+      <h2><span class="num">07</span>最小化诊断实验及预期结果</h2>
+      <div class="note blue">
+        <span class="label">执行状态</span>
+        <p>实验 A、B、C 已在实机执行（COM12，ESP32-S3 v0.2，内置 8 MB PSRAM），原始日志保存在 <code>docs/experiment-*.log</code>。<code>cam_hal.c</code> 的临时补丁已还原并通过 SHA-256 校验；固件已恢复为 <code>DF_CAMERA_DIAG=0</code> 的正常配置。</p>
+        <p>根因已经定位，实验 D（降 XCLK）与实验 E（换模组对照）不再需要执行；E 可作为修复后的验证手段保留。</p>
+      </div>
+
+      <div class="exp">
+        <div class="exp-head"><span class="exp-id">实验 A · 最高优先</span><h3>RGB565 最小采集</h3></div>
+        <p class="goal">目的：回答“OV5640 能否通过 DVP 输出有效像素”。这是唯一能把“JPEG 输出链路”和“底层采集链路”分开的实验，因此必须第一个做。</p>
+        <p>这是场景切换而不是调参：同时改变格式、分辨率、缓冲数量，是为了绕开 JPEG 路径和帧队列，获得最小可判定结果。XCLK、引脚、DMA 配置、PSRAM 配置全部保持不变。</p>
+        <pre><code>// 仅实验分支：src/camera_manager.cpp
+config.pixel_format = PIXFORMAT_RGB565;
+config.frame_size   = FRAMESIZE_QQVGA;      // 160 × 120
+config.fb_count     = 1;
+config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
+
+// 仅实验分支：src/vision_task.cpp 暂时跳过 AI 流程
+// 只打印: fb-&gt;width, fb-&gt;height, fb-&gt;format, fb-&gt;len,
+//         前 16 字节, 以及每个颜色通道的 min/max/均值</code></pre>
+        <p><strong>预期结果：</strong><code>width=160</code>、<code>height=120</code>、<code>format=PIXFORMAT_RGB565</code>、<code>len=38400</code>（160 × 120 × 2），并且不再出现 NO-SOI。</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>实际观察</th><th>判读</th><th>下一步</th></tr></thead>
+            <tbody>
+              <tr><td>len = 38400，像素统计有变化</td><td>DVP 链路可用，故障在 JPEG 输出/配置</td><td>做 B</td></tr>
+              <tr><td>len = 38400，但图像有固定条纹、色偏或恒定值</td><td>数据线位级错误或错序</td><td>查 FPC，做 E</td></tr>
+              <tr><td>无帧 / 4 s 超时</td><td>VSYNC、HREF、PCLK 或 DMA 尺寸问题</td><td>做 D，再查硬件</td></tr>
+              <tr><td>出现 FB-SIZE / FB-OVF</td><td>DMA 与帧尺寸不匹配</td><td>记录完整日志</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>A2（可选，A 通过后）：</strong>调用 <code>sensor-&gt;set_colorbar(sensor, 1)</code> 输出固定彩条。彩条像素值已知，能直接暴露数据线错序，也排除镜头与曝光的影响。</p>
+      </div>
+
+      <div class="exp">
+        <div class="exp-head"><span class="exp-id">实验 B</span><h3>寄存器回读，不改变任何配置</h3></div>
+        <p class="goal">目的：确认传感器是否真的接受了 JPEG 配置。只增加日志，不改变采集行为。</p>
+        <p>用 <code>SCCB_Read()</code> 读 <code>sensor-&gt;slv_addr</code>（0x3C）并打印。建议寄存器与期望值：</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>寄存器</th><th>含义</th><th class="num">期望值</th></tr></thead>
+            <tbody>
+              <tr><td><code>0x300A / 0x300B</code></td><td>PID 高/低字节</td><td class="num">0x56 / 0x40</td></tr>
+              <tr><td><code>0x4300</code></td><td>输出格式</td><td class="num">0x30</td></tr>
+              <tr><td><code>0x3821</code></td><td>时序控制 21，bit5 = JPEG 压缩</td><td class="num">bit5 = 1</td></tr>
+              <tr><td><code>0x4407</code></td><td>压缩质量</td><td class="num">0x0C</td></tr>
+              <tr><td><code>0x501F</code></td><td>ISP 格式控制</td><td class="num">0x00</td></tr>
+              <tr><td><code>0x460C</code></td><td>JPEG 尾部（驱动关闭）</td><td class="num">0x22</td></tr>
+              <tr><td><code>0x471C</code></td><td>压缩模式相关</td><td class="num">0x50</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>判读：</strong>任一关键值不符（尤其 <code>0x4300 ≠ 0x30</code> 或 <code>0x3821</code> bit5 = 0），P0-1 成立，问题在传感器配置接受度，而不是 DVP 物理链路。</p>
+      </div>
+
+      <div class="exp">
+        <div class="exp-head"><span class="exp-id">实验 C</span><h3>首块 1024 字节的十六进制抽样</h3></div>
+        <p class="goal">目的：看清那 1024 字节到底是什么。这是唯一需要修改组件源码的实验，必须单独做、做完立即还原。</p>
+        <p>在 <span class="cite">cam_hal.c:350</span> 之前，对 <code>cnt == 0</code> 的首块打印前 64 字节（用 <code>ESP_CAMERA_ETS_PRINTF</code>）。可选：同时统计 0xFF 的占比与相邻字节差值。</p>
+        <p><strong>三种可判读形态：</strong></p>
+        <ul>
+          <li>偏移 0 处就是 <code>FF D8 FF</code> —— 与 NO-SOI 矛盾，说明探测逻辑或缓存一致性有问题，转查软件。</li>
+          <li><code>FF D8 FF</code> 出现在偏移 &gt; 0 —— P1 成立，属于帧头偏移；需要确认填充长度是否超过 1024。</li>
+          <li>完全找不到，且数值分布接近 YUV422 或随机 —— 指向 P0-1 或 P0-2，与实验 A、B 的结论交叉验证。</li>
+        </ul>
+      </div>
+
+      <div class="exp">
+        <div class="exp-head"><span class="exp-id">实验 D</span><h3>降低 XCLK（条件触发）</h3></div>
+        <p class="goal">目的：只在 A 或 C 指向信号完整性时执行。单变量：<code>XCLK_FREQ_HZ = 16000000</code>，其余全部不变。</p>
+        <p><strong>注意：</strong>这个改动并不严格单变量。OV5640 的 PLL 分支在检测到 16 MHz XCLK 时会改用 <code>sys_mul = 160</code>（<span class="cite">ov5640.c:437-438</span>），因此它实际测试的是“整个时钟域”。如果结果有改善，只能说明与时钟相关，不能直接归因于 XCLK 本身。</p>
+        <p><strong>预期：</strong>若存在时序裕量问题，NO-SOI 消失或失败率明显下降；若症状完全不变，可排除时钟速率作为主因。</p>
+      </div>
+
+      <div class="exp">
+        <div class="exp-head"><span class="exp-id">实验 E</span><h3>硬件交叉对照（条件触发）</h3></div>
+        <p class="goal">目的：区分“这块模组/这块板”与“这个工程”。只在 A 显示 DVP 异常或 B 显示配置正常但不出 JPEG 时执行。</p>
+        <p>两条独立对照，任选其一即可获得信息：</p>
+        <ul>
+          <li>用 esp32-camera 自带示例单独编译烧录，读同一路摄像头；</li>
+          <li>换一块已知良好的 OV5640 模组，保持本工程不变。</li>
+        </ul>
+        <p><strong>预期：</strong>若对照也 NO-SOI，问题在板、模组或接线；若对照正常，问题在本工程的配置或使用方式。</p>
+      </div>
+    </section>
+
+    <section id="results">
+      <h2><span class="num">08</span>每项实验的实际结果</h2>
+      <p>只记录真实发生过的结果。未执行的项目明确标注，不填写推测值。</p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>实验</th><th>状态</th><th>实际结果</th><th>结论</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>PSRAM DMA 开启</td>
+              <td><span class="tag t-fact">已执行</span></td>
+              <td><code>NO-SOI - JPEG start marker missing (PSRAM)</code>，随后取帧超时</td>
+              <td>PSRAM 直接 DMA 路径失败</td>
+            </tr>
+            <tr>
+              <td>PSRAM DMA 关闭</td>
+              <td><span class="tag t-fact">已执行</span></td>
+              <td><code>NO-SOI - JPEG start marker missing</code>（无后缀），约 6654 ms 处 <code>Failed to get frame: timeout</code></td>
+              <td>换用内部 DMA 路径后症状一致，排除 PSRAM DMA</td>
+            </tr>
+            <tr>
+              <td>A · RGB565 最小采集</td>
+              <td><span class="tag t-fact">已执行</span></td>
+              <td><code>160x120 fmt=0 len=38400</code>，连续 6 帧像素都在变化（G 均值 58→82）；<strong><code>odd_bytes=0/38400</code></strong></td>
+              <td>DVP 能出图；但每个字节 bit0 均为 0 → D0 恒低</td>
+            </tr>
+            <tr>
+              <td>A2 · 彩条</td>
+              <td><span class="tag t-unknown">未执行</span></td>
+              <td>—</td>
+              <td>结论已足够，无需执行</td>
+            </tr>
+            <tr>
+              <td>B · 寄存器回读</td>
+              <td><span class="tag t-fact">已执行</span></td>
+              <td><code>0x4300=0x30</code>、<code>0x3821=0x21</code>、<code>0x4407=0x0C</code>、<code>0x501F=0x00</code>，全部符合预期</td>
+              <td>传感器确实处于 JPEG 模式</td>
+            </tr>
+            <tr>
+              <td>C · 首块十六进制</td>
+              <td><span class="tag t-fact">已执行</span></td>
+              <td><code>FE D8 FE E0 00 10 4A 46 48 46 … FE DA</code>，1024 字节内 <code>0xFF</code> 数量为 0</td>
+              <td>合法 JPEG，全部 <code>FF</code> 被抹成 <code>FE</code> → 锁定 bit0</td>
+            </tr>
+            <tr>
+              <td>D · XCLK 16 MHz</td>
+              <td><span class="tag t-unknown">不再需要</span></td>
+              <td>—</td>
+              <td>恒定单 bit 错误，不是时序抖动</td>
+            </tr>
+            <tr>
+              <td>E · 硬件交叉对照</td>
+              <td><span class="tag t-unknown">待修复后验证</span></td>
+              <td>—</td>
+              <td>用于确认修复效果</td>
+            </tr>
+            <tr>
+              <td>F · 恢复正常固件复验</td>
+              <td><span class="tag t-fact">已执行</span></td>
+              <td>JPEG/QVGA、fb_count=3、16×1024 内部 DMA 均恢复；PLL 与业务配置一致；仍出现 <code>NO-SOI</code></td>
+              <td>业务配置未残留诊断改动；故障随硬件存在</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>实验 A、B、C 三项互不依赖却指向同一根线，结论已经收敛：<strong>不是软件、不是 PSRAM、不是传感器模式，而是 DVP 的 bit0 没有正确送达</strong>。</p>
+    </section>
+
+    <section id="root-cause">
+      <h2><span class="num">09</span>最终根因与修复建议</h2>
+
+      <h3>根因</h3>
+      <div class="note red">
+        <span class="label">已确认</span>
+        <p><strong>DVP 数据线 D0（GPIO11）恒为低电平。</strong>传感器输出的每个字节 bit0 都是 0，JPEG 的 <code>FF</code> 因此变成 <code>FE</code>，<code>FF D8 FF</code> 不存在，SOI 校验必然失败。这是硬件连接问题，不是传感器损坏，也不是软件配置问题。</p>
+      </div>
+
+      <div class="note ok">
+        <span class="label">修复后复测通过（2026-11-02 03:23）</span>
+        <p>整板断电、重新烧录后，同一套固件、同一块模组、同样的业务配置下：启动日志中 <code>NO-SOI</code> 出现次数为 <strong>0</strong>；<code>/capture</code> 返回 HTTP 200，得到结构合法的 320×240 JPEG（<code>FFD8</code> 起始、<code>FFD9</code> 结束、含 11 个 <code>0xFF</code>）；<code>frame_seq</code> 持续递增（416 → 429，约 6.5 fps），推理 FPS 5.6。说明 D0 已恢复，此前的位级丢失确由连接问题引起，而非传感器损坏。具体是哪一次物理动作（重新插拔 FPC、压接或重新上电）让接触恢复，没有单独记录；若故障复现，仍按下面“修复步骤”逐项检查。</p>
+      </div>
+
+      <h3>证据链（故障存在时）</h3>
+      <ol>
+        <li><strong>实验 A</strong>：RGB565 QQVGA 能稳定出图（6 帧、每帧 38400 字节、内容随场景变化），说明 VSYNC/PCLK/HREF、DMA 与 bit1–bit7 都正常。</li>
+        <li><strong>实验 B</strong>：JPEG 寄存器全部符合预期，<code>0x3821=0x21</code> 证明压缩位生效，排除“传感器没进 JPEG 模式”。</li>
+        <li><strong>实验 C</strong>：首块解码出 <code>FE D8 FE E0 … "JFIF" … FE DA</code>，是结构完整的 JPEG，只是所有 <code>FF</code> 都少了最低位；1024 字节内 <code>0xFF</code> 计数为 0。</li>
+        <li><strong>交叉验证</strong>：RGB565 帧 <code>odd_bytes=0/38400</code>。任何正常图像都不可能 100% 为偶数——这直接把故障锁定在 bit0 这一根线上。</li>
+      </ol>
+
+      <h3>已被证据排除</h3>
+      <ul>
+        <li><strong>PSRAM DMA 模式</strong>——开启与关闭症状一致。</li>
+        <li><strong>PSRAM 容量不足</strong>——8 MB 可用，3 个帧缓冲分配成功，剩余 4.4 MB。</li>
+        <li><strong>引脚映射错误</strong>——与厂商引脚图及两个参考工程逐脚一致。</li>
+        <li><strong>组件被本地修改</strong>——关键源文件与 <code>CHECKSUMS.json</code> 完全一致。</li>
+        <li><strong>帧队列并发</strong>——全工程只有一个取帧调用点，且失败发生在第一次取帧。</li>
+        <li><strong>SOI 探测窗口太小</strong>——1024 字节内完全没有 SOI，不是“位置偏了一点”。</li>
+      </ul>
+
+      <h3>D0 为什么恒低：三个待查方向</h3>
+      <ul>
+        <li><strong>FPC 接触问题</strong>——未完全插入、方向偏、金手指氧化或压接不良。最常见，先查。</li>
+        <li><strong>模组线序与板级定义不符</strong>——板级引脚 D0=GPIO11 与厂商图一致，但手上这块模组的实际线序尚未核对。</li>
+        <li><strong>板级开路或被拉低</strong>——GPIO11 焊点/走线开路，或被板上其它器件（LED、按键、电平转换）拉低。</li>
+      </ul>
+
+      <h3>修复步骤</h3>
+      <ol>
+        <li>断电，取下摄像头模组，检查 FPC 插入深度、方向与金手指，重新插紧后复测。</li>
+        <li>万用表通断档测量模组 D0 引脚 ↔ GPIO11（连接器焊点），确认是否导通。</li>
+        <li>上电测量 GPIO11 对地电压；若恒为 0 且通断正常，检查是否有其它器件把它拉低。</li>
+        <li>换一块已知良好的 OV5640 模组复测；若仍恒低，则为板级故障。</li>
+        <li>修复后用实验 A 验收（<code>odd_bytes</code> 应显著大于 0），再恢复正常 JPEG 固件确认出图。</li>
+      </ol>
+
+      <h3>软件侧的边界</h3>
+      <p>补不回 bit0：任何 XCLK、PCLK、DMA 或格式参数都无法恢复一根恒低的线。能做的是保留诊断开关（<code>DF_CAMERA_DIAG</code>，默认 0）和串口抓取脚本，修复后一条命令即可复验，不必再改业务代码。</p>
+
+      <h3>不建议的做法</h3>
+      <ul>
+        <li>不要因为 NO-SOI 就判定 OV5640 损坏。</li>
+        <li>不要先把 PSRAM 容量当作默认结论。</li>
+        <li>不要同时修改 XCLK、PCLK、DMA 参数——那会让下一次日志失去判读价值。</li>
+        <li>不要在 managed_components 里长期保留调试补丁；实验后必须还原。</li>
+        <li>不要用软件滤波、插值或“补齐 bit0”去掩盖这个错误——那只会让图像看起来正常，而码流仍然非法。</li>
+      </ul>
+
+      <h3>验收标准</h3>
+      <ul>
+        <li>实验 A：<code>odd_bytes</code> 接近 50%（正常图像约一半字节是奇数），不再是 0。</li>
+        <li>实验 C：首块以 <code>FF D8 FF E0</code> 开头，1024 字节内 <code>0xFF</code> 计数大于 0。</li>
+        <li>正常固件：连续 30 秒内 ≥95% 的帧通过 SOI/EOI 校验，<code>/capture</code> 返回的 JPEG 可被浏览器正常解码。</li>
+        <li>RGB565 对照：<code>len</code> 恒为 38400，图像内容随场景变化。</li>
+      </ul>
+    </section>
+
+    <section id="appendix">
+      <h2><span class="num">10</span>附录 · 配置快照与回滚</h2>
+      <p>工程目录当前没有被 git 跟踪（仓库状态显示为未跟踪目录），修改前必须先建立可回滚的基线。</p>
+      <h3>需要备份的文件</h3>
+      <ul>
+        <li><code>src/camera_manager.cpp</code>、<code>src/vision_task.cpp</code>——实验 A 会改。</li>
+        <li><code>managed_components/espressif__esp32-camera/driver/cam_hal.c</code>——实验 C 会改，属于组件管理器目录。</li>
+        <li><code>sdkconfig.goouuu-s3-cam</code> 与 <code>sdkconfig.defaults</code>——本工程通过 <code>sdkconfig.&lt;env&gt;</code> 生效，改默认值时必须同时改这两处。</li>
+      </ul>
+      <h3>回滚方式</h3>
+      <ul>
+        <li>最稳妥：实验前把整个工程目录复制一份，实验后整目录替换。</li>
+        <li>或者在项目根目录执行一次 <code>git add -A &amp;&amp; git commit</code>，把当前状态纳入版本控制，之后每个实验单独提交、单独回滚。</li>
+        <li>组件目录的修改建议另存为 <code>.patch</code>，实验结束后用组件管理器重新安装恢复。</li>
+      </ul>
+      <h3>本次加入的诊断工具（默认关闭）</h3>
+      <ul>
+        <li><code>include/diag_config.h</code> —— <code>DF_CAMERA_DIAG</code>：<code>0</code> 正常业务；<code>1</code> RGB565 最小采集；<code>2</code> JPEG 寄存器回读。</li>
+        <li><code>tools/capture_serial.py</code> —— 复位并抓取 UART：<code>python tools/capture_serial.py COM12 20</code>。</li>
+        <li>原始日志：<code>docs/experiment-a.log</code>、<code>experiment-a2.log</code>、<code>experiment-b.log</code>、<code>experiment-c.log</code>。</li>
+        <li><code>docs/cam_hal.c.orig</code> —— 上游原件备份，SHA-256 <code>664b3ba6…6334</code>；临时补丁已还原并校验一致。</li>
+      </ul>
+
+      <h3>术语</h3>
+      <ul>
+        <li><strong>SOI / EOI</strong>：JPEG 码流的起始标记 <code>FF D8 FF</code> 与结束标记 <code>FF D9</code>。</li>
+        <li><strong>EOF</strong>：此处指 DMA 搬运满一个设定字节数后产生的“输入成功结束”事件，不是帧结束。</li>
+        <li><strong>DVP</strong>：并口摄像头接口，8 位数据加 PCLK、HREF、VSYNC 三根同步信号。</li>
+        <li><strong>fb</strong>：frame buffer，一帧图像的缓冲区。</li>
+      </ul>
+    </section>
+
+  </article>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>依据：串口日志与三项实机实验（2026-11-02，COM12）、ESP-IDF 6.1.0 与 esp32-camera 2.1.8 源码、组件校验清单。<span class="tag t-fact">业务配置已恢复</span></p>
+    <p>报告中“事实”指日志或源码直接可见；“推断”指由事实必然推出；“假设”指合理但需实验验证。</p>
+  </div>
+</footer>

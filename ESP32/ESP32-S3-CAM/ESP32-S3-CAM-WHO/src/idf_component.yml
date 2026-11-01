@@ -1,0 +1,3 @@
+dependencies:
+  espressif/esp32-camera: "*"
+  espressif/human_face_recognition: "~0.3.3"

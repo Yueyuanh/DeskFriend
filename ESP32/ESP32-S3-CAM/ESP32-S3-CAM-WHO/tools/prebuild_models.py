@@ -19,6 +19,13 @@ espdl = managed / "espressif__esp-dl"
 pack_script = espdl / "fbs_loader" / "pack_espdl_models.py"
 embed_script = espdl / "fbs_loader" / "cmake" / "data_file_embed_asm_aligned.cmake"
 
+# First build, or after deleting managed_components: the component manager has
+# not installed esp-dl yet. Skip packing; the ESP-DL CMake step installs the
+# component, and the next build packs the models.
+if not pack_script.exists():
+    print("prebuild_models: esp-dl not installed yet, skipping model packing")
+    Return()
+
 # Use the tools of whichever PlatformIO core is running this build, so the
 # project does not need a private copy of the toolchain next to it.
 python_exe = Path(env.subst("$PYTHONEXE"))

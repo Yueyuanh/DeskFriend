@@ -1,7 +1,8 @@
-#include "vision_task.h"
+#include "vision/vision_task.h"
 
-#include "app_state.h"
-#include "camera_manager.h"
+#include "core/app_state.h"
+#include "vision/camera_manager.h"
+
 #include "diag_config.h"
 
 #include "dl_image_jpeg.hpp"

@@ -532,7 +532,7 @@ web server started on port 80
 <span class="bad">Failed to get frame: timeout</span>  <span class="dim">(约 6654 ms 处)</span>
       </div>
 
-      <p>后续三项实验的原始输出（完整日志见工程 <code>docs/experiment-*.log</code>）：</p>
+      <p>后续三项实验的原始输出（完整日志见工程 <code>docs/logs/experiment-*.log</code>）：</p>
       <div class="log">
 <span class="run">实验 A：RGB565 QQVGA，同一块板</span>
 DIAG A frame 0: 160x120 fmt=0 len=38400 pixels=19200
@@ -879,7 +879,7 @@ DIAG len=1024 ff=<span class="bad">0</span>                 <span class="dim">�
       <p>以下引用均来自当前工程，未做任何修改。</p>
 
       <h3>采集配置</h3>
-      <p><span class="cite">src/camera_manager.cpp:15-17, 38-46</span></p>
+      <p><span class="cite">src/vision/camera_manager.cpp:15-17, 38-46</span></p>
       <pre><code>constexpr int XCLK_FREQ_HZ = 20000000;
 constexpr int JPEG_QUALITY = 12;
 constexpr int FRAME_BUFFER_COUNT = 3;
@@ -950,7 +950,7 @@ if (sensor-&gt;pixformat == PIXFORMAT_JPEG) reg21 |= 0x20;
       <p>源码层面驱动确实按 JPEG 配置了传感器。<span class="tag t-fact">事实</span> 但寄存器是否接受、是否保持，只能由实验 B 的回读确认。<span class="tag t-unknown">未验证</span></p>
 
       <h3>取帧超时与单调用点</h3>
-      <p><span class="cite">driver/esp_camera.c:393-400</span> · <span class="cite">src/vision_task.cpp:63-68</span></p>
+      <p><span class="cite">driver/esp_camera.c:393-400</span> · <span class="cite">src/vision/vision_task.cpp:63-68</span></p>
       <pre><code>#define FB_GET_TIMEOUT (4000 / portTICK_PERIOD_MS)
 camera_fb_t *fb = cam_take(FB_GET_TIMEOUT);
 
@@ -963,7 +963,7 @@ if (!fb) { state_set_message("摄像头取帧失败"); ... continue; }</code></p
       <h2><span class="num">07</span>最小化诊断实验及预期结果</h2>
       <div class="note blue">
         <span class="label">执行状态</span>
-        <p>实验 A、B、C 已在实机执行（COM12，ESP32-S3 v0.2，内置 8 MB PSRAM），原始日志保存在 <code>docs/experiment-*.log</code>。<code>cam_hal.c</code> 的临时补丁已还原并通过 SHA-256 校验；固件已恢复为 <code>DF_CAMERA_DIAG=0</code> 的正常配置。</p>
+        <p>实验 A、B、C 已在实机执行（COM12，ESP32-S3 v0.2，内置 8 MB PSRAM），原始日志保存在 <code>docs/logs/experiment-*.log</code>。<code>cam_hal.c</code> 的临时补丁已还原并通过 SHA-256 校验；固件已恢复为 <code>DF_CAMERA_DIAG=0</code> 的正常配置。</p>
         <p>根因已经定位，实验 D（降 XCLK）与实验 E（换模组对照）不再需要执行；E 可作为修复后的验证手段保留。</p>
       </div>
 
@@ -971,13 +971,13 @@ if (!fb) { state_set_message("摄像头取帧失败"); ... continue; }</code></p
         <div class="exp-head"><span class="exp-id">实验 A · 最高优先</span><h3>RGB565 最小采集</h3></div>
         <p class="goal">目的：回答“OV5640 能否通过 DVP 输出有效像素”。这是唯一能把“JPEG 输出链路”和“底层采集链路”分开的实验，因此必须第一个做。</p>
         <p>这是场景切换而不是调参：同时改变格式、分辨率、缓冲数量，是为了绕开 JPEG 路径和帧队列，获得最小可判定结果。XCLK、引脚、DMA 配置、PSRAM 配置全部保持不变。</p>
-        <pre><code>// 仅实验分支：src/camera_manager.cpp
+        <pre><code>// 仅实验分支：src/vision/camera_manager.cpp
 config.pixel_format = PIXFORMAT_RGB565;
 config.frame_size   = FRAMESIZE_QQVGA;      // 160 × 120
 config.fb_count     = 1;
 config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
 
-// 仅实验分支：src/vision_task.cpp 暂时跳过 AI 流程
+// 仅实验分支：src/vision/vision_task.cpp 暂时跳过 AI 流程
 // 只打印: fb-&gt;width, fb-&gt;height, fb-&gt;format, fb-&gt;len,
 //         前 16 字节, 以及每个颜色通道的 min/max/均值</code></pre>
         <p><strong>预期结果：</strong><code>width=160</code>、<code>height=120</code>、<code>format=PIXFORMAT_RGB565</code>、<code>len=38400</code>（160 × 120 × 2），并且不再出现 NO-SOI。</p>
@@ -1190,7 +1190,7 @@ config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
       <p>工程目录当前没有被 git 跟踪（仓库状态显示为未跟踪目录），修改前必须先建立可回滚的基线。</p>
       <h3>需要备份的文件</h3>
       <ul>
-        <li><code>src/camera_manager.cpp</code>、<code>src/vision_task.cpp</code>——实验 A 会改。</li>
+        <li><code>src/vision/camera_manager.cpp</code>、<code>src/vision/vision_task.cpp</code>——实验 A 会改。</li>
         <li><code>managed_components/espressif__esp32-camera/driver/cam_hal.c</code>——实验 C 会改，属于组件管理器目录。</li>
         <li><code>sdkconfig.goouuu-s3-cam</code> 与 <code>sdkconfig.defaults</code>——本工程通过 <code>sdkconfig.&lt;env&gt;</code> 生效，改默认值时必须同时改这两处。</li>
       </ul>
@@ -1204,8 +1204,8 @@ config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
       <ul>
         <li><code>include/diag_config.h</code> —— <code>DF_CAMERA_DIAG</code>：<code>0</code> 正常业务；<code>1</code> RGB565 最小采集；<code>2</code> JPEG 寄存器回读。</li>
         <li><code>tools/capture_serial.py</code> —— 复位并抓取 UART：<code>python tools/capture_serial.py COM12 20</code>。</li>
-        <li>原始日志：<code>docs/experiment-a.log</code>、<code>experiment-a2.log</code>、<code>experiment-b.log</code>、<code>experiment-c.log</code>。</li>
-        <li><code>docs/cam_hal.c.orig</code> —— 上游原件备份，SHA-256 <code>664b3ba6…6334</code>；临时补丁已还原并校验一致。</li>
+        <li>原始日志：<code>docs/logs/experiment-a.log</code>、<code>experiment-a2.log</code>、<code>experiment-b.log</code>、<code>experiment-c.log</code>。</li>
+        <li><code>docs/reference/cam_hal.c.orig</code> —— 上游原件备份，SHA-256 <code>664b3ba6…6334</code>；临时补丁已还原并校验一致。</li>
       </ul>
 
       <h3>术语</h3>

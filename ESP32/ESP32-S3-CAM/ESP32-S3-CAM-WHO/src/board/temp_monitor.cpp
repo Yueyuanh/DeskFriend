@@ -1,4 +1,4 @@
-#include "temp_monitor.h"
+#include "board/temp_monitor.h"
 
 #include "driver/temperature_sensor.h"
 #include "esp_check.h"

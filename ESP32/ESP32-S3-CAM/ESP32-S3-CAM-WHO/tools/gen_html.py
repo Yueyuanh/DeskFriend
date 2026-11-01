@@ -1,12 +1,12 @@
-"""Wrap src/index.html into src/index_html.h (raw string literal for the firmware).
+"""Wrap src/web/index.html into src/web/index_html.h (raw string literal for the firmware).
 
 Usage: python tools/gen_html.py
 """
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "src" / "index.html"
-DST = ROOT / "src" / "index_html.h"
+SRC = ROOT / "src" / "web" / "index.html"
+DST = ROOT / "src" / "web" / "index_html.h"
 
 html = SRC.read_text(encoding="utf-8")
 if ")HTML\"" in html:

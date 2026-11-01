@@ -1,4 +1,4 @@
-#include "camera_manager.h"
+#include "vision/camera_manager.h"
 
 #include "app_config.h"
 #include "diag_config.h"

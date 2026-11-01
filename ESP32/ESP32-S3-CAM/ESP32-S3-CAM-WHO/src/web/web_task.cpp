@@ -1,8 +1,8 @@
-#include "web_task.h"
+#include "web/web_task.h"
 
-#include "app_state.h"
+#include "board/temp_monitor.h"
+#include "core/app_state.h"
 #include "index_html.h"
-#include "temp_monitor.h"
 
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"

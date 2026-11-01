@@ -1,7 +1,7 @@
-#include "wifi_manager.h"
+#include "net/wifi_manager.h"
 
 #include "app_config.h"
-#include "app_state.h"
+#include "core/app_state.h"
 
 #include "esp_event.h"
 #include "esp_log.h"

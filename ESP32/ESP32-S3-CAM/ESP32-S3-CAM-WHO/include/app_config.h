@@ -17,7 +17,7 @@
 
 // Camera wiring for the Goouuu ESP32-S3-CAM + OV5640 reference design.
 // Capture parameters (XCLK, frame size, quality, fb_count) live in
-// src/camera_manager.cpp next to the camera_config_t they configure.
+// src/vision/camera_manager.cpp next to the camera_config_t they configure.
 #define DF_CAM_PWDN -1
 #define DF_CAM_RESET -1
 #define DF_CAM_XCLK 15

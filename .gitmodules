@@ -1,0 +1,3 @@
+[submodule "MiniProgram/DeskFriend"]
+	path = MiniProgram/DeskFriend
+	url = https://github.com/Yueyuanh/DeskFriend_MimiProgram.git

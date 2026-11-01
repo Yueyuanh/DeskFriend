@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeskFriend 桌面陪伴机器人</title>
+<style>
+:root{--bg:#eef7f5;--ink:#1d2b2b;--teal:#8fe3d6;--lime:#e6ff4d;--coral:#ff7a6b;--card:#fff}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;overflow-x:hidden}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;padding:16px;min-height:100vh}
+.stage{position:relative;border-radius:20px;background:#dff3f0;overflow:hidden;min-height:480px}
+#c{width:100%;height:100%;display:block;touch-action:none}
+.chip{position:absolute;left:14px;top:14px;padding:6px 12px;border-radius:99px;background:var(--lime);font-weight:700}
+.chip.on{background:var(--coral);color:#fff}
+.panel{background:var(--card);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+h1{margin:0;font-size:20px}h2{margin:6px 0 0;font-size:12px;letter-spacing:.06em;color:#587}
+.sl{display:grid;grid-template-columns:1fr auto;gap:4px;font-weight:600}
+.sl input{grid-column:1/3;accent-color:#2bb5a0;width:100%}
+.row{display:flex;gap:8px}
+button{font:inherit;border:0;border-radius:12px;padding:10px 12px;background:var(--teal);color:var(--ink);cursor:pointer;font-weight:600}
+button.big{flex:1;background:var(--coral);color:#fff;font-size:18px;letter-spacing:.08em;touch-action:none;user-select:none}
+button.big:active,button.big.down{filter:brightness(.9);transform:translateY(2px)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grid button{background:#eaf6f3}
+.grid button.active{background:var(--lime);outline:2px solid var(--ink)}
+.state{padding:8px 10px;border-radius:10px;background:#f4f8f7;font-weight:600}
+.state.on{background:var(--coral);color:#fff}
+.read{display:flex;gap:10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}.read span{background:#f4f8f7;padding:4px 8px;border-radius:8px}
+#log{margin:0;padding:0 0 0 16px;max-height:110px;overflow:auto;font-size:12px;color:#456}
+.hint{margin:0;font-size:12px;color:#789}
+.grid.three{grid-template-columns:repeat(3,1fr)}.grid.three button{padding:8px 2px;font-size:13px}
+.snd{align-items:center}.snd input{flex:1;accent-color:#2bb5a0}.snd button{background:var(--lime)}
+@media(min-width:821px){.panel{max-height:calc(100vh - 32px);overflow:auto;position:sticky;top:16px}}
+@media(max-width:820px){.app{grid-template-columns:1fr;padding:10px}.stage{height:56vh;min-height:340px}}
+
+details{border-top:1px solid #e3eeec;padding-top:6px}summary{cursor:pointer;font-weight:700;font-size:13px;color:#456;padding:4px 0}details>*:not(summary){margin-top:6px}
+input[type=text]{font:inherit;width:100%;padding:8px 10px;border:2px solid #cfe6e1;border-radius:10px;background:#fbfffe}
+.two{display:grid;grid-template-columns:90px 1fr;gap:6px}.cnt{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+#cam{position:absolute;right:12px;bottom:12px;width:128px;border-radius:12px;border:3px solid var(--lime);transform:scaleX(-1);background:#000}
+.grid button.active,button.active{background:var(--lime);outline:2px solid var(--ink)}
+
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<main class="app">
+  <section class="stage"><canvas id="c" aria-label="DeskFriend 3D"></canvas><div class="chip" id="chip">待机</div><video id="cam" playsinline muted hidden></video></section>
+  <aside class="panel">
+    <h1>DeskFriend</h1>
+    <label class="sl">YAW 左右 <output id="yawOut">0°</output><input id="yaw" type="range" min="-45" max="45" step="1" value="0"></label>
+    <label class="sl">PITCH 上下 <output id="pitchOut">0°</output><input id="pitch" type="range" min="-20" max="20" step="1" value="0"></label>
+    <div class="row"><button id="press" class="big">PRESS</button><button id="center">回中</button></div>
+    <div class="row snd"><button id="snd" data-on="1">音效：开</button><input id="vol" type="range" min="0" max="1" step=".05" value=".5" aria-label="音量"></div>
+    <div class="state" id="pressState">按压状态：未按下</div>
+    <div class="read"><span>YAW <b id="rYaw">0.0</b></span><span>PITCH <b id="rPitch">0.0</b></span><span>INPUT <b id="rIn">IDLE</b></span></div>
+    <details open><summary>灵动动作</summary><div class="grid three" id="acts"></div><p class="hint">点击机器人头部 = 随机动作；PRESS / Space / Enter = 触发选中项（选「随机」则每次随机）</p></details>
+    <details><summary>话术表情（文字 + 动作 + 音效）</summary><div class="grid three" id="phr"></div></details>
+    <details><summary>自身状态（电量 / 开机 / 网络）</summary><div class="grid three" id="sta"></div></details>
+    <details><summary>朋友消息（自定义文字）</summary>
+      <div class="two"><input type="text" id="chatName" maxlength="6" value="小可爱" aria-label="昵称"><input type="text" id="chatText" maxlength="200" placeholder="想对屏幕说点什么…" aria-label="消息"></div>
+      <div class="cnt"><span id="chatCnt">0/60</span><button id="chatSend">发送到屏幕</button></div><div class="grid three" id="chips"></div></details>
+    <details><summary>像素火柴人</summary><button id="stickBtn">像素火柴人：关</button><div class="grid three" id="sanims"></div>
+      <button id="camBtn">开启摄像头同步</button><p class="hint" id="camState">未开启</p></details>
+    <details><summary>基础表情</summary><div class="grid three" id="exprs"></div></details>
+    <details open><summary>事件日志</summary><ul id="log"></ul></details>
+    <p class="hint">拖拽旋转视角 · 点击头部随机动作</p>
+  </aside>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+// 程序化音效（WebAudio 合成，无外部音频文件）。条目：[频率Hz, 起始秒, 时长秒, {type, to(滑音目标), g(音量), vib(颤音), bell(钟声泛音)}]
+const SND = {
+  press: [[180, 0, .07, { type: 'triangle', to: 90, g: .5 }]], release: [[420, 0, .08, { type: 'triangle', to: 640, g: .4 }]], blip: [[660, 0, .06, { g: .25 }]],
+  hi: [[523, 0, .12], [659, .1, .12], [784, .2, .3, { g: .4 }]],
+  curious: [[440, 0, .12, { to: 520 }], [587, .14, .2, { to: 740 }]],
+  happy: [[392, 0, .1, { to: 560 }], [392, .28, .1, { to: 560 }], [523, .56, .1, { to: 740 }], [523, .84, .1, { to: 740 }]],
+  shy: [[880, 0, .08, { to: 1040, g: .2 }], [988, .1, .08, { to: 1175, g: .2 }], [784, .3, .2, { to: 659, g: .18, vib: 1 }]],
+  eat: [[170, 0, .07, { type: 'triangle', to: 90, g: .6 }], [170, .22, .07, { type: 'triangle', to: 90, g: .6 }], [170, .44, .07, { type: 'triangle', to: 90, g: .6 }], [170, .66, .07, { type: 'triangle', to: 90, g: .6 }], [523, .9, .1], [659, 1, .25]],
+  water: [[400, 0, .09, { to: 900, g: .3 }], [500, .14, .09, { to: 1100, g: .3 }], [350, .3, .1, { to: 800, g: .3 }], [784, .52, .2, { g: .3 }]],
+  off: [[523, 0, .1], [659, .1, .1], [784, .2, .1], [1047, .3, .5, { g: .4 }], [784, .3, .5, { type: 'triangle', g: .25 }], [659, .3, .5, { type: 'triangle', g: .25 }]],
+  energy: [[330, 0, .08, { type: 'square', g: .14, to: 660 }], [440, .08, .08, { type: 'square', g: .14 }], [554, .16, .08, { type: 'square', g: .14 }], [659, .24, .08, { type: 'square', g: .14 }], [880, .32, .35, { type: 'square', g: .16 }]],
+  night: [[392, 0, .5, { type: 'triangle', g: .3 }], [330, .5, .5, { type: 'triangle', g: .3 }], [262, 1, .9, { type: 'triangle', g: .3 }]],
+  thanks: [[392, 0, .2, { type: 'triangle', g: .3 }], [523, .2, .45, { type: 'triangle', g: .3 }]],
+  miss: [[880, 0, .5, { to: 740, vib: 1, g: .25 }], [784, .5, .7, { to: 659, vib: 1, g: .22 }]],
+  msg: [[1319, 0, .4, { g: .35, bell: 1 }], [1047, .18, .6, { g: .35, bell: 1 }]],
+  cheer: [[392, 0, .12, { type: 'square', g: .14 }], [392, .15, .12, { type: 'square', g: .14 }], [523, .3, .4, { type: 'square', g: .16 }]],
+  sleepy: [[500, 0, 1.3, { to: 200, vib: 1, g: .25 }]], wow: [[300, 0, .25, { to: 1200, g: .35 }]],
+  sad: [[392, 0, .3, { type: 'triangle', to: 370 }], [311, .35, .7, { type: 'triangle', to: 280, g: .3 }]],
+  love: [[1047, 0, .15, { g: .25 }], [1319, .12, .15, { g: .25 }], [1568, .24, .5, { g: .25 }], [2093, .36, .4, { g: .12 }]],
+  yes: [[523, 0, .08, { to: 600 }], [659, .12, .14, { to: 760 }]],
+  no: [[330, 0, .1, { type: 'triangle', to: 280 }], [294, .16, .18, { type: 'triangle', to: 240 }]],
+  look: [[600, 0, .06, { g: .25 }], [720, .18, .06, { g: .25 }], [600, .4, .06, { g: .25 }]],
+  peek: [[900, 0, .05, { g: .2 }], [1100, .1, .08, { g: .2, to: 1300 }]],
+  dance: [[392, 0, .1], [494, .18, .1], [587, .36, .1], [494, .54, .1], [392, .72, .1], [523, .9, .2]],
+  think: [[440, 0, .35, { to: 520, vib: 1, g: .22 }], [494, .4, .4, { to: 440, vib: 1, g: .2 }]],
+  wink: [[700, 0, .05, { g: .25 }], [1400, .08, .12, { g: .3, to: 1800 }]],
+  scared: [[800, 0, .5, { type: 'triangle', vib: 1, g: .2, to: 600 }]],
+  smug: [[330, 0, .15, { type: 'triangle' }], [392, .2, .15, { type: 'triangle' }], [330, .4, .3, { type: 'triangle', to: 300 }]],
+  dizzy: [[600, 0, .7, { to: 300, vib: 1, g: .22 }], [300, .7, .5, { to: 500, vib: 1, g: .2 }]],
+  lowbat: [[523, 0, .18, { type: 'triangle', g: .3 }], [392, .22, .18, { type: 'triangle', g: .3 }], [294, .44, .2, { type: 'triangle', g: .28 }], [196, .7, .9, { type: 'triangle', to: 120, g: .28 }]],
+  charging: [[262, 0, .15, { type: 'triangle', g: .25 }], [330, .2, .15, { type: 'triangle', g: .25 }], [392, .4, .15, { type: 'triangle', g: .25 }], [523, .6, .4, { type: 'triangle', g: .28 }]],
+  full: [[523, 0, .1], [659, .1, .1], [784, .2, .1], [1047, .3, .12], [1319, .42, .5, { g: .4, bell: 1 }]],
+  boot: [[392, 0, .12, { g: .3 }], [523, .14, .12, { g: .3 }], [659, .28, .12], [1047, .42, .4, { g: .35 }]],
+  offline: [[440, 0, .12, { type: 'square', g: .12 }], [330, .2, .2, { type: 'square', g: .12 }]],
+};
+let ctx, master, on = true, vol = .5;
+function init() {
+  if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ctx = new AC(); master = ctx.createGain(); master.gain.value = vol * .6;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5000; master.connect(lp); lp.connect(ctx.destination); }
+  if (ctx.state === 'suspended') ctx.resume();
+}
+function tone(f, s, d, o, t0) {
+  const { type = 'sine', to, g = .35, vib, bell } = o || {}, t = t0 + s, osc = ctx.createOscillator(), a = ctx.createGain();
+  osc.type = type; osc.frequency.setValueAtTime(f, t); if (to) osc.frequency.exponentialRampToValueAtTime(to, t + d);
+  if (vib) { const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 6; lg.gain.value = f * .02; l.connect(lg); lg.connect(osc.frequency); l.start(t); l.stop(t + d + .1); }
+  a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(g, t + .012); a.gain.exponentialRampToValueAtTime(.0001, t + d + (bell ? .3 : .08));
+  osc.connect(a); a.connect(master); osc.start(t); osc.stop(t + d + .4);
+  if (bell) tone(f * 2.4, s, d * .6, { g: g * .4 }, t0);
+}
+const sfx = {
+  init,
+  play(n) { if (!on || !ctx || !SND[n]) return; if (ctx.state === 'suspended') ctx.resume(); const t0 = ctx.currentTime + .01; for (const [f, s, d, o] of SND[n]) tone(f, s, d, o, t0); },
+  setOn(v) { on = v; }, setVol(v) { vol = v; if (master) master.gain.value = v * .6; },
+};
+
+// 屏幕绘制：240×240 圆屏。face=表情，text=底部文字，T=全局时间，age=本次动作已播放秒数
+const P = Math.PI, C = '#f3efe0', BG = '#0c171b', CO = '#ff7a6b';
+const GLOW = { wink: 0xffc15e, think: 0x9aa8ff, scared: 0x6fd0ff, dance: 0xe6ff4d, dizzy: 0xff9a3d, no: 0xff7a6b, lowbat: 0xff5a4d, charging: 0xe6ff4d, full: 0x8fe38a, boot: 0x8fe3d6, offline: 0x8896a0, chat: 0xff9ab8, stick: 0xe6ff4d, idle: 0x8fe3d6, happy: 0xe6ff4d, curious: 0x8fe3d6, shy: 0xff9a8f, pressed: 0xff7a6b, greeting: 0xe6ff4d,
+  eat: 0xffc15e, water: 0x6fd0ff, off: 0xe6ff4d, energy: 0xe6ff4d, night: 0x7a8cff, thanks: 0xff9a8f, miss: 0xff7aa8,
+  msg: 0x6fd0ff, cheer: 0xff9a3d, sleepy: 0x9aa8ff, wow: 0xffe14d, sad: 0x6f8cb8, love: 0xff6f9a };
+const EXPR_NAMES = { idle: '柔和待机', happy: '开心', curious: '好奇', shy: '害羞', pressed: '按压中', greeting: '收到问候' };
+const BLUSH = { shy: 1.3, thanks: 1.2, love: 1.15, sad: 0.35, wow: 0.6, night: 0.7, sleepy: 0.7 };
+const hex = n => '#' + n.toString(16).padStart(6, '0');
+
+function drawScreen(g, face, text, T, age, blink) {
+  const b = blink ? 0.12 : 1, sn = Math.sin;
+  const rs = () => { g.strokeStyle = g.fillStyle = C; g.lineWidth = 9; g.globalAlpha = 1; };
+  const eye = (x, y, w, h) => { g.beginPath(); g.ellipse(x, y, w, Math.max(h, 2), 0, 0, 7); g.fill(); };
+  const arc = (x, y, r, a, c) => { g.beginPath(); g.arc(x, y, r, a, c); g.stroke(); };
+  const line = (a, b2, c, d) => { g.beginPath(); g.moveTo(a, b2); g.lineTo(c, d); g.stroke(); };
+  const heart = (x, y, s, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x, y + s * .35); g.bezierCurveTo(x - s, y - s * .3, x - s * .5, y - s, x, y - s * .45); g.bezierCurveTo(x + s * .5, y - s, x + s, y - s * .3, x, y + s * .35); g.fill(); };
+  const star = (x, y, s, col) => { g.fillStyle = col; g.beginPath(); for (let i = 0; i < 8; i++) { const r = i % 2 ? s * .35 : s, a = i * P / 4 - P / 2; g.lineTo(x + r * Math.cos(a), y + r * Math.sin(a)); } g.fill(); };
+  const drop = (x, y, s, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x, y - s * 1.4); g.bezierCurveTo(x + s * .4, y - s * .5, x + s, y, x + s, y + s * .45); g.arc(x, y + s * .45, s, 0, P); g.bezierCurveTo(x - s, y, x - s * .4, y - s * .5, x, y - s * 1.4); g.fill(); };
+  const zz = () => { for (let i = 0; i < 2; i++) { const p = (T * .5 + i * .5) % 1; g.globalAlpha = sn(P * p); g.fillStyle = '#9aa8ff'; g.font = `bold ${12 + 8 * p}px sans-serif`; g.textAlign = 'center'; g.fillText('Z', 150 + p * 24 + i * 4, 100 - p * 40); } };
+  const happyEyes = (y = 104, r = 20) => { arc(82, y, r, P * 1.1, P * 1.9); arc(158, y, r, P * 1.1, P * 1.9); };
+  const batt = (cx, cy, lv, col) => { g.strokeStyle = C; g.lineWidth = 6; g.strokeRect(cx - 38, cy - 16, 72, 32); g.fillStyle = C; g.fillRect(cx + 36, cy - 6, 6, 12); g.fillStyle = col; g.fillRect(cx - 32, cy - 10, 60 * Math.max(0, Math.min(1, lv)), 20); };
+
+  g.save(); g.clearRect(0, 0, 240, 240); g.beginPath(); g.arc(120, 120, 120, 0, 7); g.clip();
+  g.fillStyle = BG; g.fillRect(0, 0, 240, 240); g.lineCap = g.lineJoin = 'round'; rs();
+  if (face === 'chat' || face === 'stick') { face === 'chat' ? drawChat(g, T, age) : drawStick(g, T);
+    g.globalAlpha = 1; g.strokeStyle = hex(GLOW[face]); g.lineWidth = 10; g.beginPath(); g.arc(120, 120, 114, 0, 7); g.stroke(); g.restore(); return; }
+  g.save();
+  if (text) { g.translate(120, 106); g.scale(.8, .8); g.translate(-120, -112); }
+  switch (face) {
+    case 'happy': happyEyes(112, 22); arc(120, 128, 36, P * .12, P * .88); break;
+    case 'curious': eye(78, 104, 17, 22 * b); eye(162, 98, 25, 31 * b); g.beginPath(); g.ellipse(120, 168, 9, 12, 0, 0, 7); g.stroke(); break;
+    case 'shy': arc(82, 96, 20, P * .1, P * .9); arc(158, 96, 20, P * .1, P * .9);
+      g.beginPath(); g.moveTo(98, 166); g.quadraticCurveTo(110, 156, 120, 166); g.quadraticCurveTo(130, 176, 142, 166); g.stroke(); break;
+    case 'pressed': g.beginPath(); g.moveTo(62, 84); g.lineTo(100, 106); g.lineTo(62, 128); g.moveTo(178, 84); g.lineTo(140, 106); g.lineTo(178, 128); g.stroke(); line(104, 166, 136, 166); break;
+    case 'greeting': eye(82, 100, 20, 26 * b); eye(158, 100, 20, 26 * b); g.beginPath(); g.arc(120, 142, 34, 0, P); g.fill();
+      g.fillStyle = CO; g.beginPath(); g.arc(120, 168, 16, 0, P); g.fill();
+      if (!text) { g.fillStyle = C; g.font = 'bold 26px sans-serif'; g.textAlign = 'center'; g.fillText('Hi!', 120, 212); } break;
+    case 'eat': { happyEyes(100, 18); const o = 5 + 9 * Math.abs(sn(T * 11)); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 138, 16, o, 0, 0, 7); g.fill();
+      g.fillStyle = '#f6eedd'; g.beginPath(); g.arc(120, 160, 42, 0, P); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(120, 160, 32, P, 0); g.fill();
+      g.strokeStyle = '#ffc15e'; g.lineWidth = 5; line(138, 150, 172, 112 + 2 * sn(T * 11)); line(148, 156, 182, 120 + 2 * sn(T * 11)); } break;
+    case 'water': eye(82, 104, 14, 20 * b); eye(158, 104, 14, 20 * b); arc(120, 136, 20, P * .15, P * .85);
+      drop(186, 62 + 4 * sn(T * 4), 16, '#6fd0ff'); drop(52, 40 + (T * 50) % 70, 9, 'rgba(111,208,255,.6)'); break;
+    case 'off': happyEyes(102, 19); g.beginPath(); g.arc(120, 126, 30, 0, P); g.closePath(); g.fill(); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 146, 14, 8, 0, 0, 7); g.fill();
+      for (let i = 0; i < 7; i++) { g.save(); g.translate(30 + i * 30, (T * 70 + i * 43) % 150 + 8); g.rotate(T * 4 + i); g.fillStyle = ['#ff7a6b', '#e6ff4d', '#8fe3d6'][i % 3]; g.fillRect(-4, -2, 8, 4); g.restore(); } break;
+    case 'energy': { const s = 20 + 3 * sn(T * 10); star(82, 100, s, C); star(158, 100, s, C); arc(120, 128, 28, P * .12, P * .88);
+      g.fillStyle = '#e6ff4d'; g.beginPath(); [[182, 34], [162, 70], [176, 70], [166, 102], [196, 60], [180, 60]].forEach(([x, y], i) => i ? g.lineTo(x, y + 2 * sn(T * 14)) : g.moveTo(x, y)); g.fill(); } break;
+    case 'night': arc(82, 104, 18, P * .12, P * .88); arc(158, 104, 18, P * .12, P * .88); arc(120, 138, 10, P * .15, P * .85);
+      g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(184, 58, 16, 0, 7); g.fill(); g.fillStyle = BG; g.beginPath(); g.arc(191, 53, 14, 0, 7); g.fill(); zz(); break;
+    case 'thanks': happyEyes(102, 18); arc(120, 128, 24, P * .15, P * .85);
+      star(46, 60, 10 + 3 * sn(T * 6), '#ffe14d'); star(198, 64, 8 + 3 * sn(T * 6 + 2), '#ffe14d'); star(120, 48, 7 + 2 * sn(T * 6 + 4), '#ff9a8f'); break;
+    case 'miss': for (const x of [82, 158]) { eye(x, 104, 17, 22 * b); g.fillStyle = '#6fa8ff'; g.beginPath(); g.ellipse(x, 118, 13, 5, 0, 0, 7); g.fill(); g.fillStyle = C; }
+      g.beginPath(); g.moveTo(104, 146); g.quadraticCurveTo(112, 138 + sn(T * 8) * 2, 120, 146); g.quadraticCurveTo(128, 154, 136, 146); g.stroke();
+      for (let i = 0; i < 2; i++) { const p = (T * .45 + i * .5) % 1; g.globalAlpha = sn(P * p); heart(100 + i * 40 + 8 * sn(T * 3 + i), 70 - p * 34, 10 + 4 * p, '#ff7aa8'); } break;
+    case 'msg': eye(82, 104, 15, 22 * b); eye(158, 104, 15, 22 * b); g.beginPath(); g.ellipse(120, 146, 8, 10, 0, 0, 7); g.stroke();
+      g.save(); g.translate(168, 56); g.rotate(.18 * sn(T * 18) * (age < 1.2 ? 1 : .2)); g.fillStyle = C; g.fillRect(-24, -16, 48, 32);
+      g.strokeStyle = '#2a4a55'; g.lineWidth = 3; g.beginPath(); g.moveTo(-24, -15); g.lineTo(0, 3); g.lineTo(24, -15); g.stroke(); g.restore();
+      g.fillStyle = CO; g.beginPath(); g.arc(188, 42, 7 + 2 * sn(T * 8), 0, 7); g.fill(); break;
+    case 'cheer': g.lineWidth = 7; line(62, 78, 100, 88); line(178, 78, 140, 88); g.lineWidth = 9; eye(82, 106, 15, 19 * b); eye(158, 106, 15, 19 * b);
+      g.beginPath(); g.arc(120, 128, 26, 0, P); g.closePath(); g.fill(); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 146, 12, 7, 0, 0, 7); g.fill();
+      star(40, 66, 9 + 3 * sn(T * 9), '#ffb35e'); star(200, 70, 8 + 3 * sn(T * 9 + 2), '#ffb35e'); break;
+    case 'sleepy': { g.lineWidth = 8; line(64, 104 + sn(T * 2) * 2, 100, 110); line(176, 104 + sn(T * 2) * 2, 140, 110);
+      const y = .5 + .5 * sn(T * 1.6); g.beginPath(); g.ellipse(120, 148, 8 + 8 * y, 6 + 12 * y, 0, 0, 7); g.stroke(); zz(); } break;
+    case 'wow': for (const x of [82, 158]) { g.fillStyle = C; eye(x, 100, 22, 28 * b); g.fillStyle = BG; g.beginPath(); g.arc(x, 100, 8, 0, 7); g.fill(); }
+      g.beginPath(); g.ellipse(120, 150, 12, 16, 0, 0, 7); g.stroke(); g.fillStyle = '#ffe14d'; g.font = `bold ${38 + 4 * sn(T * 12)}px sans-serif`; g.textAlign = 'center'; g.fillText('!', 180, 72); break;
+    case 'sad': g.lineWidth = 7; line(62, 82, 98, 70); line(178, 82, 142, 70); g.lineWidth = 9; eye(82, 108, 14, 17 * b); eye(158, 108, 14, 17 * b);
+      g.fillStyle = '#6fa8ff'; g.beginPath(); g.ellipse(66, 128 + ((T * .6) % 1) * 20, 5, 7, 0, 0, 7); g.fill(); arc(120, 176, 24, P * 1.2, P * 1.8); break;
+    case 'love': { const s = 22 + 2.5 * sn(T * 8); heart(82, 100, s, '#ff6f9a'); heart(158, 100, s, '#ff6f9a'); arc(120, 134, 24, P * .15, P * .85);
+      for (let i = 0; i < 3; i++) { const p = (T * .5 + i / 3) % 1; g.globalAlpha = sn(P * p); heart(60 + i * 60 + 6 * sn(T * 3 + i), 58 - p * 20, 8 + 5 * p, '#ff9ab8'); } } break;
+    case 'wink': arc(82, 106, 17, P * 1.1, P * 1.9); eye(158, 104, 16, 23 * b); arc(120, 134, 26, P * .12, P * .88); g.fillStyle = CO; g.beginPath(); g.ellipse(132, 154, 8, 6, 0, 0, P); g.fill(); star(194, 76, 9 + 3 * sn(T * 9), '#ffe14d'); break;
+    case 'think': for (const x of [82, 158]) { g.fillStyle = C; eye(x, 102, 16, 22 * b); g.fillStyle = BG; g.beginPath(); g.arc(x - 6, 94, 6, 0, 7); g.fill(); } line(104, 148, 128, 144);
+      g.fillStyle = C; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(150 + i * 14, 58 - i * 5, 3 + i * 1.5 + (sn(T * 4 - i) > .6 ? 1.5 : 0), 0, 7); g.fill(); } break;
+    case 'scared': for (const x of [82, 158]) { g.fillStyle = C; eye(x, 100, 20, 26 * b); g.fillStyle = BG; g.beginPath(); g.arc(x + sn(T * 30) * 2, 102, 5, 0, 7); g.fill(); }
+      g.strokeStyle = C; g.beginPath(); g.moveTo(98, 150); for (let i = 1; i <= 5; i++) g.lineTo(98 + i * 8, 150 + (i % 2 ? -6 : 6)); g.stroke(); drop(190, 70 + 3 * sn(T * 5), 9, '#6fd0ff'); break;
+    case 'dance': happyEyes(100, 18); g.beginPath(); g.arc(120, 124, 28, 0, P); g.closePath(); g.fill(); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 144, 12, 7, 0, 0, 7); g.fill();
+      g.fillStyle = '#e6ff4d'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; for (let i = 0; i < 2; i++) { const p = (T * .8 + i * .5) % 1; g.globalAlpha = sn(P * p); g.fillText(i ? '♫' : '♪', 50 + i * 140 + 6 * sn(T * 5 + i), 92 - p * 36); } break;
+    case 'dizzy': for (const x of [82, 158]) { g.lineWidth = 4; g.beginPath(); for (let a = 0; a < 12; a += .35) { const r = 2 + a * 1.7; g.lineTo(x + r * Math.cos(a + T * 6), 102 + r * Math.sin(a + T * 6)); } g.stroke(); }
+      g.lineWidth = 9; g.beginPath(); g.moveTo(98, 150); g.bezierCurveTo(108, 138 + 6 * sn(T * 5), 132, 162 - 6 * sn(T * 5), 142, 150); g.stroke(); break;
+    case 'no': g.lineWidth = 7; line(60, 74, 100, 88); line(180, 74, 140, 88); g.lineWidth = 9; eye(82, 106, 12, 13 * b); eye(158, 106, 12, 13 * b);
+      g.beginPath(); g.moveTo(100, 152); g.quadraticCurveTo(110, 144, 120, 152); g.quadraticCurveTo(130, 160, 140, 152); g.stroke(); break;
+    case 'lowbat': line(64, 100, 100, 108); line(176, 100, 140, 108); batt(120, 140, .12 + .02 * sn(T * 5), sn(T * 5) > -.2 ? '#ff5a4d' : '#7a2a2a'); break;
+    case 'charging': happyEyes(98, 17); batt(120, 140, (T * .35) % 1, '#e6ff4d'); break;
+    case 'full': happyEyes(98, 17); batt(120, 140, 1, '#8fe38a'); star(52, 70, 10 + 3 * sn(T * 6), '#ffe14d'); star(188, 70, 9 + 3 * sn(T * 6 + 2), '#ffe14d'); break;
+    case 'boot': { const o = Math.min(1, age / .9); eye(82, 104, 16, 23 * o * b); eye(158, 104, 16, 23 * o * b); g.lineWidth = 7; arc(120, 150, 14, P * 1.5 + .7, P * 3.5 - .7); line(120, 134, 120, 150); } break;
+    case 'offline': line(64, 104, 100, 104); line(176, 104, 140, 104); g.lineWidth = 6; for (const r of [10, 20, 30]) arc(120, 160, r, P * 1.25, P * 1.75); eye(120, 160, 3, 3);
+      g.strokeStyle = CO; line(96, 170, 144, 128); break;
+    default: eye(82, 104, 16, 23 * b); eye(158, 104, 16, 23 * b); arc(120, 142, 20, P * .15, P * .85);
+  }
+  rs();
+  const k = BLUSH[face] ?? 1; g.fillStyle = `rgba(255,122,107,${Math.min(.95, .55 * k)})`;
+  for (const x of [50, 190]) { g.beginPath(); g.ellipse(x, 148, 20 * Math.min(k, 1.3), 11 * Math.min(k, 1.3), 0, 0, 7); g.fill(); }
+  g.restore();
+  if (text) { // 底部文字：淡入 + 轻微弹出，自动缩字号以免出圆
+    const a = Math.min(1, age / .2), pop = 1 + .22 * Math.max(0, 1 - age / .3);
+    g.save(); g.globalAlpha = a; g.translate(120, 186 + (1 - a) * 12); g.scale(pop, pop);
+    let fs = 26; const f = () => `bold ${fs}px "PingFang SC","Microsoft YaHei",sans-serif`; g.font = f();
+    while (g.measureText(text).width > 160 && fs > 14) { fs--; g.font = f(); }
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = hex(GLOW[face] ?? 0xf3efe0); g.fillText(text, 0, 0); g.restore();
+  }
+  g.globalAlpha = 1; g.strokeStyle = hex(GLOW[face] ?? GLOW.idle); g.lineWidth = 10; g.beginPath(); g.arc(120, 120, 114, 0, 7); g.stroke();
+  g.restore();
+}
+
+// ---------- 朋友消息界面 ----------
+const CHAT = { name: '', pages: [], starts: [], total: 3 };
+const CF = n => `bold ${n}px "Hiragino Maru Gothic ProN","Yuanti SC","YouYuan","Microsoft YaHei","PingFang SC",sans-serif`; // 圆体字更可爱
+function layoutChat(g, text, name) { // 按宽度逐字换行（英文优先在空格处断），每页最多 3 行，超过自动分页
+  g.save(); g.font = CF(18); const lines = []; let cur = '';
+  for (const ch of Array.from(text)) {
+    if (g.measureText(cur + ch).width > 132 && cur) { const sp = cur.lastIndexOf(' ');
+      if (ch !== ' ' && sp > 0) { lines.push(cur.slice(0, sp)); cur = cur.slice(sp + 1) + ch; } else { lines.push(cur); cur = ch === ' ' ? '' : ch; }
+    } else cur += ch;
+  }
+  if (cur) lines.push(cur); g.restore();
+  CHAT.name = name; CHAT.pages = []; for (let i = 0; i < lines.length; i += 3) CHAT.pages.push(lines.slice(i, i + 3));
+  let t = .9; CHAT.starts = CHAT.pages.map(p => { const st = t; t += Math.max(1.8, p.join('').length * .07 + 1.5); return st; }); CHAT.total = t + .4; return CHAT.total;
+}
+const chatPage = age => { let p = -1; CHAT.starts.forEach((st, i) => { if (age >= st) p = i; }); return p; };
+function bubble(g, x, y, w, h) {
+  const rr = (dx, dy, c) => { g.fillStyle = c; g.beginPath(); g.moveTo(x + dx + 14, y + dy); g.arcTo(x + dx + w, y + dy, x + dx + w, y + dy + h, 14); g.arcTo(x + dx + w, y + dy + h, x + dx, y + dy + h, 14); g.arcTo(x + dx, y + dy + h, x + dx, y + dy, 14); g.arcTo(x + dx, y + dy, x + dx + w, y + dy, 14); g.fill(); };
+  rr(2, 3, '#ff9ab8'); rr(0, 0, '#fff6f0'); g.fillStyle = '#fff6f0'; g.beginPath(); g.moveTo(x + 14, y + h - 2); g.lineTo(x + 6, y + h + 11); g.lineTo(x + 28, y + h - 2); g.fill();
+}
+function drawChat(g, T, age) {
+  hg = g;
+  const bob = Math.sin(T * 2.2) * 1.5, nm = CHAT.name; g.font = CF(14); const nw = Math.min(90, g.measureText(nm).width), sx = 120 - (30 + nw) / 2;
+  g.fillStyle = '#ffb3a7'; for (const dx of [-8, 8]) { g.beginPath(); g.arc(sx + 12 + dx, 33, 5, 0, 7); g.fill(); }
+  g.fillStyle = '#ffd9c7'; g.beginPath(); g.arc(sx + 12, 44, 12, 0, 7); g.fill();
+  g.fillStyle = '#5a3a3a'; for (const dx of [-4, 4]) { g.beginPath(); g.arc(sx + 12 + dx, 43, 1.8, 0, 7); g.fill(); }
+  g.fillStyle = 'rgba(255,122,107,.6)'; for (const dx of [-7, 7]) { g.beginPath(); g.arc(sx + 12 + dx, 48, 2.6, 0, 7); g.fill(); }
+  g.fillStyle = '#ffd9e0'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(nm, sx + 30, 44);
+  const pi = chatPage(age);
+  if (pi < 0) { const by = 100 + bob; bubble(g, 88, by, 64, 36); g.fillStyle = '#ffb3a7'; // 对方正在输入…
+    for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(104 + i * 16, by + 18 - 5 * Math.max(0, Math.sin(T * 8 - i * 1.1)), 4, 0, 7); g.fill(); } return; }
+  const lines = CHAT.pages[pi], loc = age - CHAT.starts[pi]; g.font = CF(18);
+  const bw = Math.max(72, Math.min(156, Math.max(...lines.map(l => g.measureText(l).width)) + 24)), bh = lines.length * 24 + 20, bx = 120 - bw / 2, by = 118 - bh / 2 + bob;
+  const sc = 1 + .1 * Math.exp(-loc * 7) * Math.cos(loc * 16); // 弹性弹出
+  g.save(); g.translate(120, by + bh / 2); g.scale(sc, sc); g.translate(-120, -(by + bh / 2)); bubble(g, bx, by, bw, bh);
+  let n = Math.floor(loc * 16); g.fillStyle = '#5a3a3a'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = CF(18); // 打字机
+  lines.forEach((l, j) => { const cs = Array.from(l); g.fillText(cs.slice(0, Math.max(0, n)).join(''), bx + 12, by + 22 + j * 24); n -= cs.length; });
+  if (n > 0) { const pop = Math.min(1, n / 5); heart(bx + bw - 4, by - 2 - 2 * pop, 9 * pop, '#ff7a6b'); }
+  g.restore();
+  const np = CHAT.pages.length; if (np > 1) for (let i = 0; i < np; i++) { g.fillStyle = i === pi ? '#ff7a6b' : 'rgba(255,255,255,.3)'; g.beginPath(); g.arc(120 + (i - (np - 1) / 2) * 12, 184, i === pi ? 4 : 3, 0, 7); g.fill(); }
+}
+function heart(x, y, s, col) { const g = hg; g.fillStyle = col; g.beginPath(); g.moveTo(x, y + s * .35); g.bezierCurveTo(x - s, y - s * .3, x - s * .5, y - s, x, y - s * .45); g.bezierCurveTo(x + s * .5, y - s, x + s, y - s * .3, x, y + s * .35); g.fill(); }
+let hg = null;
+
+// ---------- 像素火柴人 ----------
+const STICK = { anim: 'idle', j: null, prev: null };
+const SA = {
+  idle: t => ({ dy: Math.sin(t * 2) * .5, lean: 0, aL: [-.15, -.1], aR: [.15, .1], lL: [-.08, 0], lR: [.08, 0] }),
+  wave: t => { const s = Math.sin(t * 9); return { dy: 0, lean: 0, aL: [-.15, -.1], aR: [2.5 + .25 * s, .7 * s], lL: [-.08, 0], lR: [.08, 0] }; },
+  dance: t => { const s = Math.sin(t * 6), a = Math.abs(s); return { dy: -a * 2, lean: Math.sin(t * 3) * .35, aL: [-2.3 + .5 * s, -.5], aR: [2.3 + .5 * s, .5], lL: [-.25, .5 * a], lR: [.25, .5 * a] }; },
+  jack: t => { const u = (Math.sin(t * 6) + 1) / 2; return { dy: -2.5 * u, lean: 0, aL: [-.2 - 2.6 * u, -.1], aR: [.2 + 2.6 * u, .1], lL: [-.06 - .4 * u, 0], lR: [.06 + .4 * u, 0] }; },
+  stretch: t => { const u = (Math.sin(t * 1.5 - 1.57) + 1) / 2; return { dy: 0, lean: -.3 * u, aL: [-.2 - 2.9 * u, -.1], aR: [.2 + 2.9 * u, .1], lL: [-.08, 0], lR: [.08, 0] }; },
+};
+const pol = (x, y, a, l) => [x + l * Math.sin(a), y + l * Math.cos(a)];
+function fk(p) { // 角度 = 与“垂直向下”的夹角（弧度），骨架长度见下
+  const hip = [30 + p.lean * 3, 33 + p.dy], neck = [hip[0] + p.lean * 5, hip[1] - 12], sL = [neck[0] - 3, neck[1] + 1], sR = [neck[0] + 3, neck[1] + 1];
+  const eL = pol(...sL, p.aL[0], 7), eR = pol(...sR, p.aR[0], 7), pL = [hip[0] - 2, hip[1]], pR = [hip[0] + 2, hip[1]], kL = pol(...pL, p.lL[0], 9), kR = pol(...pR, p.lR[0], 9);
+  return { head: [neck[0] + p.lean * 2, neck[1] - 6], neck, sL, sR, hip, eL, eR, hL: pol(...eL, p.aL[0] + p.aL[1], 7), hR: pol(...eR, p.aR[0] + p.aR[1], 7),
+    kL, kR, fL: pol(...kL, p.lL[0] + p.lL[1], 9), fR: pol(...kR, p.lR[0] + p.lR[1], 9) };
+}
+function landmarksToJoints(l, vw, vh) { // MediaPipe 33 点 → 火柴人关节（镜像显示；看不到的部位用默认姿势补）
+  const Pt = i => [(1 - l[i].x) * vw, l[i].y * vh], vis = i => l[i].visibility ?? 1, mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const shM = mid(Pt(11), Pt(12)), sw = Math.hypot(Pt(11)[0] - Pt(12)[0], Pt(11)[1] - Pt(12)[1]) || 1;
+  const hipM = vis(23) > .3 && vis(24) > .3 ? mid(Pt(23), Pt(24)) : [shM[0], shM[1] + sw * 1.5];
+  const k = 12 / (Math.hypot(hipM[0] - shM[0], hipM[1] - shM[1]) || 1), Q = p => [30 + (p[0] - hipM[0]) * k, 33 + (p[1] - hipM[1]) * k];
+  const j = { head: Q(Pt(0)), neck: Q(shM), sL: Q(Pt(11)), sR: Q(Pt(12)), hip: [30, 33], eL: Q(Pt(13)), hL: Q(Pt(15)), eR: Q(Pt(14)), hR: Q(Pt(16)), kL: Q(Pt(25)), fL: Q(Pt(27)), kR: Q(Pt(26)), fR: Q(Pt(28)) };
+  j.head[1] -= 1; const d = fk(SA.idle(0));
+  const arm = (s, e, h, a, b) => { if (vis(a) < .35 || vis(b) < .35) { j[e] = [j[s][0], j[s][1] + 7]; j[h] = [j[s][0], j[s][1] + 14]; } };
+  arm('sL', 'eL', 'hL', 13, 15); arm('sR', 'eR', 'hR', 14, 16);
+  if ([25, 26].some(i => vis(i) < .4) || [27, 28].some(i => vis(i) < .3)) for (const key of ['kL', 'fL', 'kR', 'fR']) j[key] = d[key];
+  const pv = STICK.prev; if (pv) for (const key in j) j[key] = [pv[key][0] + (j[key][0] - pv[key][0]) * .5, pv[key][1] + (j[key][1] - pv[key][1]) * .5];
+  STICK.prev = j; return j;
+}
+const pxc = document.createElement('canvas'); pxc.width = pxc.height = 60; const pg = pxc.getContext('2d');
+function drawStick(g, T) { // 在 60×60 的小画布上画点阵，再用最近邻放大 4 倍
+  const j = STICK.j || fk((SA[STICK.anim] || SA.idle)(T)), c = '#e6ff4d';
+  pg.fillStyle = '#0c171b'; pg.fillRect(0, 0, 60, 60); pg.fillStyle = '#2a4a45'; for (let x = 12; x < 49; x += 4) pg.fillRect(x, 52, 2, 1);
+  const dot = (p, col, s = 2) => { pg.fillStyle = col; pg.fillRect(Math.round(p[0] - s / 2), Math.round(p[1] - s / 2), s, s); };
+  const seg = (a, b) => { const n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])))); for (let i = 0; i <= n; i++) dot([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n], c); };
+  [['neck', 'hip'], ['sL', 'sR'], ['sL', 'eL'], ['eL', 'hL'], ['sR', 'eR'], ['eR', 'hR'], ['hip', 'kL'], ['kL', 'fL'], ['hip', 'kR'], ['kR', 'fR']].forEach(([a, b]) => seg(j[a], j[b]));
+  const hx = Math.round(j.head[0]), hy = Math.round(j.head[1]); pg.fillStyle = c; for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) if (x * x + y * y <= 17) pg.fillRect(hx + x, hy + y, 1, 1);
+  pg.fillStyle = '#0c171b'; pg.fillRect(hx - 2, hy - 1, 1, 2); pg.fillRect(hx + 1, hy - 1, 1, 2); pg.fillStyle = '#ff7a6b'; pg.fillRect(hx - 3, hy + 1, 1, 1); pg.fillRect(hx + 2, hy + 1, 1, 1);
+  dot(j.hL, '#ff7a6b', 3); dot(j.hR, '#ff7a6b', 3); dot(j.fL, '#8fe3d6', 3); dot(j.fR, '#8fe3d6', 3);
+  if (!STICK.j && STICK.anim !== 'idle') for (let i = 0; i < 4; i++) { const p = (T * 1.5 + i / 4) % 1, x = 12 + i * 12, y = 20 - p * 8; pg.fillStyle = '#8fe3d6'; pg.fillRect(x, y, 1, 3); pg.fillRect(x - 1, y + 1, 3, 1); }
+  g.imageSmoothingEnabled = false; g.drawImage(pxc, 0, 0, 240, 240);
+}
+
+// 动作与话术：dur(秒)、幅度都在这里调。f(t) 返回相对偏移 {yaw°, pitch°(正=抬头), hop(场景单位)}，t∈[0,1]，起止均为 0。
+// 混用不同频率 + 正弦包络，避免僵硬；舵机平滑与待机呼吸摆动在 main.js 叠加。
+const P2 = 2 * Math.PI, w = (t, f, ph = 0) => Math.sin(P2 * f * t + ph), env = t => Math.sin(Math.PI * t), ab = Math.abs;
+const A = (group, name, face, dur, snd, f, text = '', after = '') => ({ group, name, face, dur, snd, f, text, after });
+const ACTIONS = {
+  wave:    A('act', '挥手问候', 'happy', 1.5, 'hi',      t => ({ yaw: 22 * w(t, 2) * env(t), pitch: 7 * w(t, 2, 1.2) * env(t) }), '', 'greeting'),
+  curious: A('act', '探头好奇', 'curious', 1.3, 'curious', t => ({ yaw: -32 * w(t, 1) * env(t) ** .5, pitch: -9 * env(t) + 5 * w(t, 2) * env(t) })),
+  happy:   A('act', '开心蹦蹦', 'happy', 1.4, 'happy',   t => ({ yaw: 12 * w(t, 3) * env(t), pitch: 4 * w(t, 2) * env(t) })),
+  shy:     A('act', '害羞躲闪', 'shy', 1.2, 'shy',       t => { const e = env(t ** .75); return { yaw: 28 * e, pitch: -15 * e }; }),
+  hi:     A('phr', '嗨，见到你啦', 'greeting', 1.8, 'hi',    t => ({ yaw: 20 * w(t, 2) * env(t), pitch: 6 * w(t, 2, 1.2) * env(t) }), '嗨，见到你啦'),
+  eat:    A('phr', '干饭干饭', 'eat', 1.8, 'eat',            t => ({ yaw: 6 * w(t, 1.5) * env(t), pitch: -4 * env(t) + 5 * w(t, 5) * env(t) }), '干饭干饭'),
+  water:  A('phr', '记得喝水', 'water', 1.8, 'water',        t => ({ yaw: 8 * w(t, 1) * env(t), pitch: 14 * env(t) ** .8 }), '记得喝水'),
+  off:    A('phr', '该下班了耶', 'off', 1.8, 'off',          t => ({ yaw: 18 * w(t, 3) * env(t), pitch: 6 * w(t, 1.5) * env(t) }), '该下班了耶'),
+  energy: A('phr', '元气满满', 'energy', 1.6, 'energy',      t => ({ yaw: 24 * w(t, 1.5) * env(t), pitch: 8 * env(t) + 3 * w(t, 4) * env(t) }), '元气满满'),
+  night:  A('phr', '晚安，好梦', 'night', 2.6, 'night',      t => ({ yaw: -10 * env(t), pitch: -14 * env(t) ** .8 }), '晚安，好梦'),
+  thanks: A('phr', '辛苦啦', 'thanks', 1.6, 'thanks',        t => ({ yaw: 6 * w(t, 1) * env(t), pitch: -12 * (.5 - .5 * Math.cos(P2 * 2 * t)) * env(t) ** .5 }), '辛苦啦'),
+  miss:   A('phr', '想你了', 'miss', 2.2, 'miss',            t => ({ yaw: 14 * w(t, 1) * env(t), pitch: -8 * env(t) }), '想你了'),
+  msg:    A('phr', '来消息了', 'msg', 1.6, 'msg',            t => ({ yaw: 18 * w(t, 4) * env(t) ** .5, pitch: 8 * env(t) }), '来消息了'),
+  cheer:  A('phr', '加油呀', 'cheer', 1.6, 'cheer',          t => ({ yaw: 10 * w(t, 2) * env(t), pitch: 8 * w(t, 2, 1.57) * env(t) }), '加油呀'),
+  sleepy: A('phr', '好困呀', 'sleepy', 2.4, 'sleepy',        t => ({ yaw: 4 * w(t, 1) * env(t), pitch: -16 * env(t) + 4 * w(t, 3) * env(t) ** 2 }), '好困呀'),
+  wow:    A('phr', '哇！', 'wow', 1.3, 'wow',               t => ({ yaw: 0, pitch: 14 * env(t) ** .6 }), '哇！'),
+  sad:    A('phr', '委屈巴巴', 'sad', 2.0, 'sad',            t => ({ yaw: 8 * w(t, 1.5) * env(t), pitch: -14 * env(t) ** .7 }), '委屈巴巴'),
+  love:   A('phr', '比心', 'love', 1.8, 'love',             t => ({ yaw: 14 * w(t, 1.5) * env(t), pitch: 6 * w(t, 1.5, 1.57) * env(t) }), '比心'),
+  yes:    A('act', '点头认同', 'happy', 1.4, 'yes',      t => ({ yaw: 3 * w(t, 1) * env(t), pitch: -12 * ab(w(t, 1.5)) * env(t) }), '嗯嗯！'),
+  no:     A('act', '摇头不要', 'no', 1.4, 'no',          t => ({ yaw: 24 * w(t, 2.5) * env(t), pitch: -3 * env(t) }), '不要不要'),
+  look:   A('act', '左顾右盼', 'curious', 1.8, 'look',   t => ({ yaw: 30 * w(t, 1.5) * env(t) ** .4, pitch: 4 * w(t, 3) * env(t) }), '看看看'),
+  peek:   A('act', '偷偷看你', 'shy', 1.8, 'peek',       t => ({ yaw: 30 * env(t) ** .6, pitch: -8 * env(t) + 3 * w(t, 3) * env(t) }), '偷偷看你'),
+  dance:  A('act', '摇摆舞', 'dance', 2.0, 'dance',      t => ({ yaw: 26 * w(t, 3) * env(t), pitch: 10 * w(t, 6) * env(t) }), '摇摆摇摆'),
+  think:  A('act', '思考中', 'think', 2.0, 'think',      t => ({ yaw: -18 * env(t) ** .7, pitch: 12 * env(t) ** .7 + 2 * w(t, 3) * env(t) }), '让我想想…'),
+  wink:   A('act', '眨眼调皮', 'wink', 1.4, 'wink',      t => ({ yaw: 8 * w(t, 1) * env(t), pitch: 5 * env(t) }), '嘿嘿'),
+  scared: A('act', '害怕发抖', 'scared', 1.6, 'scared',  t => ({ yaw: 6 * w(t, 9) * env(t) ** .5, pitch: -6 * env(t) }), '好怕怕'),
+  smug:   A('act', '得意', 'wink', 1.5, 'smug',          t => ({ yaw: 14 * env(t), pitch: 10 * env(t) ** .7 }), '哼哼，得意~'),
+  dizzy:  A('act', '转晕了', 'dizzy', 2.0, 'dizzy',      t => ({ yaw: 36 * w(t, 2) * env(t) ** .6, pitch: 6 * w(t, 2, 1.57) * env(t) }), '晕晕晕'),
+  lowbat:   A('sta', '没有电了', 'lowbat', 2.8, 'lowbat',     t => ({ yaw: 8 * w(t, .7) * env(t), pitch: -18 * env(t) ** .6 }), '没有电了…'),
+  charging: A('sta', '充电中', 'charging', 2.6, 'charging',   t => ({ yaw: 6 * w(t, 1) * env(t), pitch: -3 * env(t) + 4 * w(t, 1.5) * env(t) }), '充电中…'),
+  full:     A('sta', '充满电了', 'full', 2.2, 'full',         t => ({ yaw: 22 * w(t, 2) * env(t), pitch: 10 * env(t) + 4 * w(t, 3) * env(t) }), '充满电了！'),
+  boot:     A('sta', '开机啦', 'boot', 1.8, 'boot',           t => ({ yaw: 10 * w(t, 1.5) * env(t), pitch: t < .4 ? -10 * env(t / .4) : 8 * env((t - .4) / .6) }), '开机啦！'),
+  offline:  A('sta', '网络断了', 'offline', 1.8, 'offline',   t => ({ yaw: 12 * w(t, 3) * env(t), pitch: -6 * env(t) }), '网络断了…'),
+  chat:     A('hid', '朋友消息', 'chat', 3, 'msg', t => ({ yaw: 0, pitch: 0 })), // 时长与动作在发送消息时动态生成
+};
+
+// DeskFriend prototype — Three.js r160 via CDN (needs network at runtime)
+
+/* ============ 1. CONFIG：所有关键参数集中在这里（单位：场景单位，角度：度） ============ */
+const CFG = {
+  base:   { r: 0.86, h: 0.26 },
+  button: { r: 0.72, h: 0.16, travel: 0.12 },          // 按键行程 = 整体下沉距离
+  body:   { rBottom: 0.62, rTop: 0.45, h: 0.8 },
+  neck:   { yawY: 0.8, pitchY: 1.18 },                  // 相对 upperAssembly：YAW/PITCH 枢轴高度
+  head:   { r: 0.62, zScale: 0.88, centerAbovePitch: 0.3 }, // 头心 = pitchPivot + 0.3
+  screen: { r: 0.46, bezelR: 0.5, res: 240 },           // 1.28" 圆屏，240×240
+  press:  { drop: 0.12, speed: 22 },
+  limits: { yaw: 45, pitch: 20 },
+  servoSpeed: 14,
+  // 动作时长/幅度/话术：见 actions.js；音效：见 sound.js
+};
+const REST_Y = CFG.base.h + CFG.button.h; // upperAssembly 静止高度 = 按键顶面
+const rad = THREE.MathUtils.degToRad, clamp = THREE.MathUtils.clamp;
+
+/* ============ 2. 场景与机器人 ============ */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xdff3f0);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
+camera.position.set(0, 1.9, 5.3);
+const controls = new OrbitControls(camera, canvas);
+Object.assign(controls, { target: new THREE.Vector3(0, 1.3, 0), enablePan: false, enableDamping: true,
+  minDistance: 3.5, maxDistance: 9, minPolarAngle: 0.5, maxPolarAngle: 1.65 });
+controls.update();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb8d8d2, 1.1));
+const sun = new THREE.DirectionalLight(0xfff4e0, 1.6); sun.position.set(3, 6, 4); sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(6, 48), new THREE.ShadowMaterial({ opacity: 0.18 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+const mat = (c, r = 0.5, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, ...extra });
+const M = { cream: mat(0xf6eedd, 0.45), body: mat(0xe9dfca, 0.55), dark: mat(0x1a2a2e, 0.4), base: mat(0x3d5a52, 0.6), coral: mat(0xff7a6b, 0.4) };
+const mesh = (g, m, p = [0, 0, 0]) => { const o = new THREE.Mesh(g, m); o.position.set(...p); o.castShadow = true; return o; };
+
+// 屏幕：240×240 画布纹理 → 圆形几何
+const sc = document.createElement('canvas'); sc.width = sc.height = CFG.screen.res;
+const sctx = sc.getContext('2d'); const screenTex = new THREE.CanvasTexture(sc); screenTex.colorSpace = THREE.SRGBColorSpace;
+
+function buildRobot() {
+  const base = new THREE.Group(); base.name = 'base';
+  base.add(mesh(new THREE.CylinderGeometry(CFG.base.r, CFG.base.r * 1.06, CFG.base.h, 56), M.base, [0, CFG.base.h / 2, 0]));
+  const led = mesh(new THREE.SphereGeometry(0.06, 16, 12), new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xe6ff4d, emissiveIntensity: 0.4 }), [0, 0.17, CFG.base.r * 1.0]);
+  base.add(led);
+
+  const pressButton = mesh(new THREE.CylinderGeometry(CFG.button.r, CFG.button.r, CFG.button.h, 48), M.coral); pressButton.name = 'pressButton';
+  base.add(pressButton);
+
+  const upperAssembly = new THREE.Group(); upperAssembly.name = 'upperAssembly'; base.add(upperAssembly);
+  const body = mesh(new THREE.CylinderGeometry(CFG.body.rTop, CFG.body.rBottom, CFG.body.h, 48), M.body, [0, CFG.body.h / 2, 0]); body.name = 'body';
+  upperAssembly.add(body);
+
+  const yawPivot = new THREE.Group(); yawPivot.name = 'yawPivot'; yawPivot.position.y = CFG.neck.yawY; upperAssembly.add(yawPivot);
+  yawPivot.add(mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.2, 24), M.dark, [0, 0.1, 0]));  // 颈部（随 YAW 转）
+  const pitchPivot = new THREE.Group(); pitchPivot.name = 'pitchPivot'; pitchPivot.position.y = CFG.neck.pitchY - CFG.neck.yawY; yawPivot.add(pitchPivot);
+
+  const head = new THREE.Group(); head.name = 'head'; head.position.y = CFG.head.centerAbovePitch; pitchPivot.add(head);
+  const sphere = mesh(new THREE.SphereGeometry(CFG.head.r, 48, 32), M.cream); sphere.scale.z = CFG.head.zScale; head.add(sphere);
+  const faceZ = CFG.head.r * CFG.head.zScale * 0.74;
+  const face = mesh(new THREE.CylinderGeometry(CFG.screen.bezelR + 0.03, CFG.screen.bezelR + 0.03, 0.3, 48), M.dark, [0, 0, faceZ]); face.rotation.x = Math.PI / 2; head.add(face);
+  const frontZ = faceZ + 0.15;
+  const circularScreen = new THREE.Mesh(new THREE.CircleGeometry(CFG.screen.r, 64), new THREE.MeshBasicMaterial({ map: screenTex }));
+  circularScreen.name = 'circularScreen'; circularScreen.position.z = frontZ + 0.004; head.add(circularScreen);
+  const glowMat = new THREE.MeshStandardMaterial({ color: 0x223338, emissive: 0x8fe3d6, emissiveIntensity: 0.3 });
+  const bezel = new THREE.Mesh(new THREE.TorusGeometry(CFG.screen.r + 0.02, 0.022, 12, 64), glowMat); bezel.position.z = frontZ + 0.004; head.add(bezel);
+  scene.add(base);
+  return { base, pressButton, upperAssembly, yawPivot, pitchPivot, head, circularScreen, glowMat, led, headMeshes: [sphere, face, circularScreen] };
+}
+const R = buildRobot();
+
+/* ============ 5. 状态 ============ */
+const S = { yawT: 0, pitchT: 0, yaw: 0, pitch: 0, press: 0, pressed: false, input: 'IDLE', expr: 'idle', selected: 'wave', anim: null, hop: 0, syncYaw: 0, syncPitch: 0, mode: 'face', src: '', last: '', page: -1, text: '', age: 0, time: 0, exprTimer: 0, blink: 0, nextBlink: 2 };
+const $ = id => document.getElementById(id);
+function log(m) { const li = document.createElement('li'); li.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false }) + ' ' + m; $('log').prepend(li); while ($('log').children.length > 30) $('log').lastChild.remove(); }
+
+function startAction(id, src) { const a = ACTIONS[id]; S.anim = { id, t: 0 }; S.last = id; S.age = 0; S.exprTimer = 0; S.text = ''; S.input = 'PLAY'; sfx.play(a.snd); log(`${src}：${a.name}${a.text ? '（屏幕：' + a.text + '）' : ''}`); }
+function pressDown(src) { if (S.pressed) return; sfx.init(); sfx.play('press'); S.pressed = true; S.src = src; S.input = 'PRESSED'; log(`${src}：按压中`); }
+function pickRandom() { const pool = Object.keys(ACTIONS).filter(k => ['act', 'phr'].includes(ACTIONS[k].group) && k !== S.last); return pool[Math.floor(Math.random() * pool.length)]; }
+function pressUp() { if (!S.pressed) return; S.pressed = false; sfx.play('release'); const rnd = S.src === '点击头部' || S.selected === 'random'; startAction(rnd ? pickRandom() : S.selected, rnd ? '随机' : '松开'); }
+// Optional hardware bridge: the page remains fully functional without an ESP32 backend.
+let hwPoseAt = 0, hwColorAt = 0, hwPoseBusy = false, hwColorBusy = false, hwLastColor = -1;
+function syncHardware(yaw, pitch, face) {
+  const now = performance.now();
+  const yawAngle = Math.round(clamp(90 + yaw, 0, 180));
+  const pitchAngle = Math.round(clamp(90 + pitch, 0, 180));
+  if (!hwPoseBusy && now - hwPoseAt >= 40) {
+    hwPoseAt = now; hwPoseBusy = true;
+    fetch(`/api/pose?pitch=${pitchAngle}&yaw=${yawAngle}`).catch(() => {}).finally(() => { hwPoseBusy = false; });
+  }
+  const color = GLOW[face] ?? GLOW.idle;
+  if (!hwColorBusy && color !== hwLastColor && now - hwColorAt >= 100) {
+    hwColorAt = now; hwLastColor = color; hwColorBusy = true;
+    fetch(`/api/color?r=${color >> 16}&g=${(color >> 8) & 255}&b=${color & 255}`).catch(() => {}).finally(() => { hwColorBusy = false; });
+  }
+}
+
+const CHAT_MAX = 60;
+function sendChat(text) { // 朋友消息：清洗 → 超长截断 → 自动分页 → 播放
+  let t = Array.from((text || '').replace(/\s+/g, ' ').trim()); if (!t.length) { log('消息为空，先写点什么吧'); return; }
+  const cut = t.length > CHAT_MAX; if (cut) t = t.slice(0, CHAT_MAX - 1).concat('…');
+  const nm = Array.from($('chatName').value.trim() || '小可爱').slice(0, 6).join(''), dur = layoutChat(sctx, t.join(''), nm), n = CHAT.pages.length;
+  Object.assign(ACTIONS.chat, { dur, f: tt => { const e = Math.sin(Math.PI * tt); return { yaw: 9 * Math.sin(tt * n * 7 + .8) * e, pitch: -5 * e + 4 * Math.sin(tt * n * 5) * e }; } });
+  sfx.init(); startAction('chat', `${nm}：${t.join('')}`); if (cut) log(`太长啦，已截断到 ${CHAT_MAX} 字`); if (n > 1) log(`内容较长，分 ${n} 页展示`);
+}
+
+/* ============ 6. 输入处理 ============ */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let headDrag = false;
+canvas.addEventListener('pointerdown', e => {
+  const r = canvas.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  if (ray.intersectObjects(R.headMeshes).length) { headDrag = true; controls.enabled = false; pressDown('点击头部'); }
+});
+window.addEventListener('pointerup', () => { if (headDrag) { headDrag = false; controls.enabled = true; } if (S.pressed) { $('press').classList.remove('down'); pressUp(); } });
+window.addEventListener('pointercancel', () => { headDrag = false; controls.enabled = true; pressUp(); });
+$('press').addEventListener('pointerdown', e => { e.preventDefault(); $('press').classList.add('down'); pressDown('PRESS 按钮'); });
+window.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) { e.preventDefault(); pressDown(e.code); } });
+window.addEventListener('keyup', e => { if (e.target.tagName === 'INPUT') return; if (e.code === 'Space' || e.code === 'Enter') pressUp(); });
+$('yaw').addEventListener('input', e => { S.yawT = +e.target.value; $('yawOut').textContent = S.yawT + '°'; });
+$('pitch').addEventListener('input', e => { S.pitchT = +e.target.value; $('pitchOut').textContent = S.pitchT + '°'; });
+$('center').addEventListener('click', () => { $('yaw').value = $('pitch').value = 0; S.yawT = S.pitchT = 0; $('yawOut').textContent = $('pitchOut').textContent = '0°'; S.anim = null; S.expr = 'idle'; S.text = ''; log('回中'); });
+function setMode(m) { S.mode = m; $('stickBtn').textContent = '像素火柴人：' + (m === 'stick' ? '开' : '关'); $('stickBtn').classList.toggle('active', m === 'stick'); }
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14', CAM = { on: false, lm: null, stream: null, t: -1, seen: 0, msg: '' };
+function camMsg(m) { if (CAM.msg !== m) { CAM.msg = m; $('camState').textContent = m; } }
+async function startCam() {
+  $('camBtn').disabled = true; camMsg('申请摄像头…');
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' }, audio: false });
+    const v = $('cam'); v.srcObject = CAM.stream; await v.play(); v.hidden = false; camMsg('加载姿态模型中（需联网，首次几秒）…');
+    const { PoseLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs'), fs = await FilesetResolver.forVisionTasks(MP + '/wasm');
+    const opt = d => ({ baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate: d }, runningMode: 'VIDEO', numPoses: 1 });
+    try { CAM.lm = await PoseLandmarker.createFromOptions(fs, opt('GPU')); } catch { CAM.lm = await PoseLandmarker.createFromOptions(fs, opt('CPU')); }
+    CAM.on = true; CAM.seen = S.time; setMode('stick'); $('camBtn').textContent = '关闭摄像头同步'; camMsg('同步中：对着摄像头动一动'); log('摄像头同步已开启（画面只在本机处理，不上传）');
+  } catch (e) { stopCam(); camMsg('启动失败：' + (e.message || e.name || e) + '。可先用上面的动画演示'); log('摄像头同步失败'); }
+  $('camBtn').disabled = false;
+}
+function stopCam() { CAM.on = false; CAM.stream?.getTracks().forEach(t => t.stop()); CAM.stream = null; try { CAM.lm?.close(); } catch {} CAM.lm = null; STICK.j = STICK.prev = null; S.syncYaw = S.syncPitch = 0; $('cam').hidden = true; $('camBtn').textContent = '开启摄像头同步'; camMsg('未开启'); }
+function camStep() { // 每帧：取最新视频帧 → 姿态 → 火柴人关节；头部左右/上下同步到机器人云台
+  if (!CAM.on) return; const v = $('cam');
+  if (v.readyState >= 2 && v.currentTime !== CAM.t) { CAM.t = v.currentTime; const l = CAM.lm.detectForVideo(v, performance.now()).landmarks[0];
+    if (l) { STICK.j = landmarksToJoints(l, v.videoWidth, v.videoHeight); CAM.seen = S.time; camMsg('同步中：对着摄像头动一动');
+      S.syncYaw = clamp((.5 - l[0].x) * 90, -30, 30); S.syncPitch = clamp((.45 - l[0].y) * 50, -10, 10); }
+    else if (S.time - CAM.seen > 1) { STICK.j = STICK.prev = null; S.syncYaw = S.syncPitch = 0; camMsg('没看到人，站远一点试试'); } }
+}
+function chip(parent, text, fn) { const b = document.createElement('button'); b.textContent = text; b.onclick = fn; parent.append(b); return b; }
+function buildButtons() {
+  for (const [k, n] of Object.entries(EXPR_NAMES)) chip($('exprs'), n, () => { sfx.init(); sfx.play('blip'); setMode('face'); S.expr = k; S.text = ''; S.exprTimer = 0; log('表情：' + n); }).dataset.k = k;
+  chip($('acts'), '🎲 随机', () => { sfx.init(); S.selected = 'random'; syncActive(); startAction(pickRandom(), '随机预览'); }).dataset.k = 'random';
+  for (const [k, a] of Object.entries(ACTIONS)) { const box = $({ act: 'acts', phr: 'phr', sta: 'sta' }[a.group]); if (box) chip(box, a.name, () => { sfx.init(); S.selected = k; syncActive(); startAction(k, '预览'); }).dataset.k = k; }
+  syncActive();
+  $('snd').onclick = () => { sfx.init(); const on = $('snd').dataset.on !== '1'; $('snd').dataset.on = on ? '1' : '0'; $('snd').textContent = '音效：' + (on ? '开' : '关'); sfx.setOn(on); if (on) sfx.play('blip'); };
+  $('vol').oninput = e => sfx.setVol(+e.target.value);
+  $('chatText').oninput = e => { const n = Array.from(e.target.value).length; $('chatCnt').textContent = `${n}/${CHAT_MAX}`; $('chatCnt').style.color = n > CHAT_MAX ? '#d33' : ''; };
+  $('chatSend').onclick = () => sendChat($('chatText').value);
+  $('chatText').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat(e.target.value); } };
+  ['想你啦~', '吃饭了吗？', '晚上见！', '今天也要加油鸭', '在干嘛呀，快回我消息嘛'].forEach(t => chip($('chips'), t, () => { $('chatText').value = t; $('chatText').dispatchEvent(new Event('input')); sendChat(t); }));
+  $('stickBtn').onclick = () => { sfx.init(); sfx.play('blip'); setMode(S.mode === 'stick' ? 'face' : 'stick'); };
+  for (const [k, n] of Object.entries({ idle: '待机', wave: '挥手', dance: '跳舞', jack: '开合跳', stretch: '伸懒腰' })) chip($('sanims'), n, () => { if (CAM.on) stopCam(); STICK.anim = k; setMode('stick'); sfx.play('blip'); log('火柴人：' + n); });
+  $('camBtn').onclick = () => { sfx.init(); CAM.on ? stopCam() : startCam(); };
+}
+function syncActive() { for (const b of [...$('acts').children, ...$('phr').children, ...$('sta').children]) b.classList.toggle('active', b.dataset.k === S.selected); }
+
+/* ============ 7. 主循环 + UI 更新 ============ */
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect(); renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / r.height; camera.fov = camera.aspect < 0.9 ? 62 : 38; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); new ResizeObserver(resize).observe(canvas.parentElement);
+
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  S.time += dt; S.age += dt;
+  const off = { yaw: 1.6 * Math.sin(S.time * .7), pitch: 1.1 * Math.sin(S.time * 1.1 + 1), hop: 0 }; // 待机呼吸感
+  if (S.anim) { const a = ACTIONS[S.anim.id]; S.anim.t += dt / a.dur; const o = a.f(Math.min(S.anim.t, 1)); off.yaw += o.yaw; off.pitch += o.pitch;
+    if (S.anim.t >= 1) { S.expr = a.after || a.face; S.text = a.after ? '' : a.text; S.exprTimer = S.expr === 'idle' ? 0 : 1.4; S.anim = null; if (!S.pressed) S.input = 'IDLE'; log('动作完成'); } }
+  off.yaw += S.syncYaw; off.pitch += S.syncPitch; camStep();
+  const k = 1 - Math.exp(-dt * CFG.servoSpeed);
+  S.yaw += (clamp(S.yawT + off.yaw, -CFG.limits.yaw, CFG.limits.yaw) - S.yaw) * k;
+  S.pitch += (clamp(S.pitchT + off.pitch, -CFG.limits.pitch, CFG.limits.pitch) - S.pitch) * k;
+  S.press += ((S.pressed ? 1 : 0) - S.press) * (1 - Math.exp(-dt * CFG.press.speed));
+  if (S.exprTimer > 0 && (S.exprTimer -= dt) <= 0) { S.expr = 'idle'; S.text = ''; }
+
+  // 机械：整个 upperAssembly 一起下沉；按键同步压缩；base 固定
+  R.upperAssembly.position.y = REST_Y - S.press * CFG.press.drop;
+  R.pressButton.position.y = CFG.base.h + CFG.button.h / 2 - S.press * CFG.press.drop;
+  R.yawPivot.rotation.y = rad(S.yaw);
+  R.pitchPivot.rotation.x = -rad(S.pitch); // 正值 = 抬头
+
+  const cur = S.anim && ACTIONS[S.anim.id];
+  const shown = S.pressed ? 'pressed' : cur ? cur.face : (S.mode === 'stick' && S.exprTimer <= 0 ? 'stick' : S.expr), text = (S.pressed || shown === 'stick') ? '' : cur ? cur.text : S.text;
+  syncHardware(S.yaw, S.pitch, shown);
+  S.nextBlink -= dt; if (S.nextBlink < 0) { S.blink = 0.12; S.nextBlink = 2 + Math.random() * 3; } S.blink = Math.max(0, S.blink - dt);
+  drawScreen(sctx, shown, text, S.time, S.age, S.blink > 0); screenTex.needsUpdate = true;
+  if (cur === ACTIONS.chat) { const p = chatPage(S.age); if (p !== S.page) { S.page = p; if (p > 0) sfx.play('blip'); } } else S.page = -1;
+  R.glowMat.emissive.setHex(GLOW[shown]); R.glowMat.emissiveIntensity = 0.3 + 1.3 * S.press + (S.anim ? 0.4 : 0);
+  R.led.material.emissiveIntensity = 0.4 + 2 * S.press;
+
+  const pr = S.pressed;
+  $('chip').textContent = pr ? '按压中' : cur ? cur.name : shown === 'stick' ? (CAM.on ? '火柴人 · 同步中' : '像素火柴人') : (text || EXPR_NAMES[S.expr] || '待机'); $('chip').classList.toggle('on', pr);
+  $('pressState').textContent = '按压状态：' + (pr ? '按压中' : '未按下'); $('pressState').classList.toggle('on', pr);
+  $('rYaw').textContent = S.yaw.toFixed(1); $('rPitch').textContent = S.pitch.toFixed(1); $('rIn').textContent = S.input;
+  for (const b of $('exprs').children) b.classList.toggle('active', b.dataset.k === shown);
+
+  controls.update(); renderer.render(scene, camera); requestAnimationFrame(frame);
+}
+buildButtons(); resize(); log('DeskFriend 就绪');
+window.deskFriend = { ACTIONS, S, R, CFG, pressDown, pressUp, startAction }; // 便于自动化验证
+frame();
+
+</script>
+</body>
+</html>

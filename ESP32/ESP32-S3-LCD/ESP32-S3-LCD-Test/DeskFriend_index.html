@@ -1,0 +1,904 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeskFriend 桌面陪伴机器人</title>
+<style>
+:root{--bg:#eef7f5;--ink:#1d2b2b;--teal:#8fe3d6;--lime:#e6ff4d;--coral:#ff7a6b;--card:#fff}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;overflow-x:hidden}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;padding:16px;min-height:100vh}
+.stage{position:relative;border-radius:20px;background:#dff3f0;overflow:hidden;min-height:480px;transition:box-shadow .25s ease}
+.stage:has(.chip.on){box-shadow:inset 0 0 0 2px rgba(255,122,107,.22)}
+#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.chip{position:absolute;left:14px;top:14px;padding:6px 12px;border-radius:99px;background:var(--lime);font-weight:700}
+.chip.on{background:var(--coral);color:#fff}
+.panel{background:var(--card);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+h1{margin:0;font-size:20px}h2{margin:6px 0 0;font-size:12px;letter-spacing:.06em;color:#587}
+.sl{display:grid;grid-template-columns:1fr auto;gap:4px;font-weight:600}
+.sl input{grid-column:1/3;accent-color:#2bb5a0;width:100%}
+.row{display:flex;gap:8px}
+button{font:inherit;border:0;border-radius:12px;padding:10px 12px;background:var(--teal);color:var(--ink);cursor:pointer;font-weight:600}
+button.big{flex:1;background:var(--coral);color:#fff;font-size:18px;letter-spacing:.08em;touch-action:none;user-select:none}
+button.big:active,button.big.down{filter:brightness(.9);transform:translateY(2px);box-shadow:0 0 0 5px rgba(255,122,107,.18),0 0 24px rgba(255,122,107,.55)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grid button{background:#eaf6f3}
+.grid button.active{background:var(--lime);outline:2px solid var(--ink)}
+.state{padding:8px 10px;border-radius:10px;background:#f4f8f7;font-weight:600}
+.state.on{background:var(--coral);color:#fff}
+.read{display:flex;gap:10px;flex-wrap:wrap;font-variant-numeric:tabular-nums}.read span{background:#f4f8f7;padding:4px 8px;border-radius:8px}
+#log{margin:0;padding:0 0 0 16px;max-height:110px;overflow:auto;font-size:12px;color:#456}
+.hint{margin:0;font-size:12px;color:#789}
+.grid.three{grid-template-columns:repeat(3,1fr)}.grid.three button{padding:8px 2px;font-size:13px}
+.app.sidebar-collapsed{grid-template-columns:minmax(0,1fr) 48px}.app.sidebar-collapsed .panel{padding:10px 6px;overflow:hidden}.app.sidebar-collapsed .panel>*:not(#sideToggle){display:none}.app.sidebar-collapsed .panel #sideToggle{writing-mode:vertical-rl;min-height:130px;width:100%;padding:12px 4px}.panel #sideToggle{background:#eaf6f3}.stage{transition:filter .3s ease}.snd{align-items:center}.snd input{flex:1;accent-color:#2bb5a0}.snd button{background:var(--lime)}
+@media(min-width:821px){.panel{max-height:calc(100vh - 32px);overflow:auto;position:sticky;top:16px}}
+@media(max-width:820px){.app{grid-template-columns:1fr;padding:10px}.stage{height:56vh;min-height:340px}}
+
+details{border-top:1px solid #e3eeec;padding-top:6px}summary{cursor:pointer;font-weight:700;font-size:13px;color:#456;padding:4px 0}details>*:not(summary){margin-top:6px}
+input[type=text]{font:inherit;width:100%;padding:8px 10px;border:2px solid #cfe6e1;border-radius:10px;background:#fbfffe}
+.two{display:grid;grid-template-columns:90px 1fr;gap:6px}.cnt{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+#cam{position:absolute;right:12px;bottom:12px;width:128px;border-radius:12px;border:3px solid var(--lime);transform:scaleX(-1);background:#000}
+.grid button.active,button.active{background:var(--lime);outline:2px solid var(--ink)}
+
+#lcd{display:block;margin:4px auto;width:240px;height:240px;box-sizing:content-box;border:6px solid #1a2a2e;border-radius:50%;background:#000;image-rendering:pixelated;max-width:100%}
+#lcd.z2{width:480px;height:480px}
+.col{display:flex;flex-direction:column;gap:10px;min-width:0}.col .stage{flex:1}
+.dock{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card);border-radius:16px;padding:10px 12px}.dock label{font-weight:700}.dock button{background:var(--lime)}
+</style>
+<script type="importmap">
+{"imports":{"three":"./vendor/three.module.min.js","three/addons/controls/OrbitControls.js":"./vendor/OrbitControls.js"}}
+</script>
+<style>
+@font-face{font-family:DeskFace;src:url('/fonts/ui-bold.ttf') format('truetype');font-weight:600 900;font-display:block}
+@font-face{font-family:DeskFace;src:url('/fonts/ui-regular.ttf') format('truetype');font-weight:400;font-display:block}
+@font-face{font-family:DeskClock;src:url('/fonts/clock.ttf') format('truetype');font-weight:700;font-display:block}
+</style>
+</head>
+<body>
+<main class="app">
+  <div class="col"><section class="stage"><canvas id="c" aria-label="DeskFriend 3D"></canvas><div class="chip" id="chip">待机</div><video id="cam" playsinline muted hidden></video></section>
+    <div class="dock"><label>长按 2 秒拍一拍</label><button id="greetNow">试发一次</button><span class="hint" id="replyHint">轻按 = 本机开心互动</span></div></div>
+  <aside class="panel">
+    <button id="sideToggle" type="button" aria-expanded="true">收起控制栏 ‹</button><h1>DeskFriend</h1>
+    <label class="sl">YAW 左右 <output id="yawOut">0°</output><input id="yaw" type="range" min="-45" max="45" step="1" value="0"></label>
+    <label class="sl">PITCH 上下 <output id="pitchOut">0°</output><input id="pitch" type="range" min="-20" max="20" step="1" value="0"></label>
+    <div class="row"><button id="press" class="big">PRESS</button><button id="center">回中</button></div>
+    <div class="row snd"><button id="snd" data-on="1">音效：开</button><input id="vol" type="range" min="0" max="1" step=".05" value=".5" aria-label="音量"></div>
+    <div class="state" id="pressState">按压状态：未按下</div>
+    <div class="read"><span>YAW <b id="rYaw">0.0</b></span><span>PITCH <b id="rPitch">0.0</b></span><span>INPUT <b id="rIn">IDLE</b></span></div>
+    <details open><summary>屏幕 1:1 预览（240×240 · RGB565）</summary><canvas id="lcd" width="240" height="240" aria-label="屏幕预览"></canvas><div class="row"><button id="lcdZoom">放大 2×</button><button id="lcdSave">保存 PNG</button></div></details>
+    <details open><summary>设备连接与状态同步</summary>
+      <input id="deviceAddress" type="text" aria-label="板子地址" placeholder="串口输出的 IP 地址">
+      <div class="row"><button id="deviceConnect">刷新状态</button></div>
+      <p id="deviceStatus" class="state">等待连接设备</p><p id="deviceMetrics" class="hint">网页同步表情和进度，LCD 在板端绘制动画</p>
+      <p id="deviceImu" class="hint">等待板载 IMU</p>
+    </details>
+    <details><summary>待机时间</summary><label class="sl">无操作 <output id="idleOut">30 秒</output> 后显示时间<input id="idleSec" type="range" min="5" max="120" step="5" value="30"></label><button id="clockNow">立即显示时间</button></details>
+    <details open><summary>灵动动作</summary><div class="grid three" id="acts"></div><p class="hint">轻按松开 = 本机开心互动（点头部为随机，PRESS / 空格 / 回车为选中的开心动作）；长按 2 秒 = 向好友打招呼</p></details>
+    <details><summary>话术表情（文字 + 动作 + 音效）</summary><div class="grid three" id="phr"></div></details>
+    <details><summary>自身状态（电量 / 开机 / 网络）</summary><div class="grid three" id="sta"></div></details>
+    <details><summary>朋友消息（自定义文字）</summary>
+      <div class="two"><input type="text" id="chatName" maxlength="6" value="朋友" aria-label="昵称"><input type="text" id="chatText" maxlength="200" placeholder="想对屏幕说点什么…" aria-label="消息"></div>
+      <div class="cnt"><span id="chatCnt">0/60</span><button id="chatSend">发送到屏幕</button></div><div class="grid three" id="chips"></div></details>
+    <details><summary>黑白火柴人表情包</summary><button id="stickBtn">常驻火柴人：关</button><p class="hint">点一个表情包即发送到屏幕，播放约 5 秒后自动返回</p><div class="grid three" id="sanims"></div>
+      <button id="camBtn">开启摄像头同步</button><p class="hint" id="camState">未开启</p></details>
+    <details><summary>基础表情</summary><div class="grid three" id="exprs"></div></details>
+    <details open><summary>事件日志</summary><ul id="log"></ul></details>
+    <p class="hint">拖拽旋转视角 · 点击头部随机动作</p>
+  </aside>
+</main>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { DeviceMonitor } from './device_monitor.mjs';
+const deviceMonitor = new DeviceMonitor();
+await Promise.all([document.fonts.load('700 26px DeskFace'), document.fonts.load('400 13px DeskFace'), document.fonts.load('700 52px DeskClock')]);
+// 程序化音效（WebAudio 合成，无外部音频文件）。条目：[频率Hz, 起始秒, 时长秒, {type, to(滑音目标), g(音量), vib(颤音), bell(钟声泛音)}]
+const SND = {
+  press: [[180, 0, .07, { type: 'triangle', to: 90, g: .5 }]], release: [[420, 0, .08, { type: 'triangle', to: 640, g: .4 }]], blip: [[660, 0, .06, { g: .25 }]],
+  hi: [[523, 0, .12], [659, .1, .12], [784, .2, .3, { g: .4 }]],
+  curious: [[440, 0, .12, { to: 520 }], [587, .14, .2, { to: 740 }]],
+  happy: [[392, 0, .1, { to: 560 }], [392, .28, .1, { to: 560 }], [523, .56, .1, { to: 740 }], [523, .84, .1, { to: 740 }]],
+  shy: [[880, 0, .08, { to: 1040, g: .2 }], [988, .1, .08, { to: 1175, g: .2 }], [784, .3, .2, { to: 659, g: .18, vib: 1 }]],
+  eat: [[170, 0, .07, { type: 'triangle', to: 90, g: .6 }], [170, .22, .07, { type: 'triangle', to: 90, g: .6 }], [170, .44, .07, { type: 'triangle', to: 90, g: .6 }], [170, .66, .07, { type: 'triangle', to: 90, g: .6 }], [523, .9, .1], [659, 1, .25]],
+  water: [[400, 0, .09, { to: 900, g: .3 }], [500, .14, .09, { to: 1100, g: .3 }], [350, .3, .1, { to: 800, g: .3 }], [784, .52, .2, { g: .3 }]],
+  off: [[523, 0, .1], [659, .1, .1], [784, .2, .1], [1047, .3, .5, { g: .4 }], [784, .3, .5, { type: 'triangle', g: .25 }], [659, .3, .5, { type: 'triangle', g: .25 }]],
+  energy: [[330, 0, .08, { type: 'square', g: .14, to: 660 }], [440, .08, .08, { type: 'square', g: .14 }], [554, .16, .08, { type: 'square', g: .14 }], [659, .24, .08, { type: 'square', g: .14 }], [880, .32, .35, { type: 'square', g: .16 }]],
+  night: [[392, 0, .5, { type: 'triangle', g: .3 }], [330, .5, .5, { type: 'triangle', g: .3 }], [262, 1, .9, { type: 'triangle', g: .3 }]],
+  thanks: [[392, 0, .2, { type: 'triangle', g: .3 }], [523, .2, .45, { type: 'triangle', g: .3 }]],
+  miss: [[880, 0, .5, { to: 740, vib: 1, g: .25 }], [784, .5, .7, { to: 659, vib: 1, g: .22 }]],
+  msg: [[1319, 0, .4, { g: .35, bell: 1 }], [1047, .18, .6, { g: .35, bell: 1 }]],
+  cheer: [[392, 0, .12, { type: 'square', g: .14 }], [392, .15, .12, { type: 'square', g: .14 }], [523, .3, .4, { type: 'square', g: .16 }]],
+  sleepy: [[500, 0, 1.3, { to: 200, vib: 1, g: .25 }]], wow: [[300, 0, .25, { to: 1200, g: .35 }]],
+  sad: [[392, 0, .3, { type: 'triangle', to: 370 }], [311, .35, .7, { type: 'triangle', to: 280, g: .3 }]],
+  love: [[1047, 0, .15, { g: .25 }], [1319, .12, .15, { g: .25 }], [1568, .24, .5, { g: .25 }], [2093, .36, .4, { g: .12 }]],
+  yes: [[523, 0, .08, { to: 600 }], [659, .12, .14, { to: 760 }]],
+  no: [[330, 0, .1, { type: 'triangle', to: 280 }], [294, .16, .18, { type: 'triangle', to: 240 }]],
+  look: [[600, 0, .06, { g: .25 }], [720, .18, .06, { g: .25 }], [600, .4, .06, { g: .25 }]],
+  peek: [[900, 0, .05, { g: .2 }], [1100, .1, .08, { g: .2, to: 1300 }]],
+  dance: [[392, 0, .1], [494, .18, .1], [587, .36, .1], [494, .54, .1], [392, .72, .1], [523, .9, .2]],
+  think: [[440, 0, .35, { to: 520, vib: 1, g: .22 }], [494, .4, .4, { to: 440, vib: 1, g: .2 }]],
+  wink: [[700, 0, .05, { g: .25 }], [1400, .08, .12, { g: .3, to: 1800 }]],
+  scared: [[800, 0, .5, { type: 'triangle', vib: 1, g: .2, to: 600 }]],
+  smug: [[330, 0, .15, { type: 'triangle' }], [392, .2, .15, { type: 'triangle' }], [330, .4, .3, { type: 'triangle', to: 300 }]],
+  dizzy: [[600, 0, .7, { to: 300, vib: 1, g: .22 }], [300, .7, .5, { to: 500, vib: 1, g: .2 }]],
+  lowbat: [[523, 0, .18, { type: 'triangle', g: .3 }], [392, .22, .18, { type: 'triangle', g: .3 }], [294, .44, .2, { type: 'triangle', g: .28 }], [196, .7, .9, { type: 'triangle', to: 120, g: .28 }]],
+  charging: [[262, 0, .15, { type: 'triangle', g: .25 }], [330, .2, .15, { type: 'triangle', g: .25 }], [392, .4, .15, { type: 'triangle', g: .25 }], [523, .6, .4, { type: 'triangle', g: .28 }]],
+  full: [[523, 0, .1], [659, .1, .1], [784, .2, .1], [1047, .3, .12], [1319, .42, .5, { g: .4, bell: 1 }]],
+  boot: [[392, 0, .12, { g: .3 }], [523, .14, .12, { g: .3 }], [659, .28, .12], [1047, .42, .4, { g: .35 }]],
+  offline: [[440, 0, .12, { type: 'square', g: .12 }], [330, .2, .2, { type: 'square', g: .12 }]],
+  send: [[400, 0, .25, { to: 1200, g: .3 }], [1568, .2, .15, { g: .2 }], [2093, .32, .3, { g: .15 }]],
+  recv: [[1047, 0, .12, { g: .3, bell: 1 }], [1319, .12, .12, { g: .3, bell: 1 }], [1568, .26, .4, { g: .3, bell: 1 }]],
+  tick: [[700, 0, .05, { g: .18, type: 'triangle' }]],
+};
+let ctx, master, on = true, vol = .5;
+function init() {
+  if (!ctx) { const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    ctx = new AC(); master = ctx.createGain(); master.gain.value = vol * .6;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5000; master.connect(lp); lp.connect(ctx.destination); }
+  if (ctx.state === 'suspended') ctx.resume();
+}
+function tone(f, s, d, o, t0) {
+  const { type = 'sine', to, g = .35, vib, bell } = o || {}, t = t0 + s, osc = ctx.createOscillator(), a = ctx.createGain();
+  osc.type = type; osc.frequency.setValueAtTime(f, t); if (to) osc.frequency.exponentialRampToValueAtTime(to, t + d);
+  if (vib) { const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 6; lg.gain.value = f * .02; l.connect(lg); lg.connect(osc.frequency); l.start(t); l.stop(t + d + .1); }
+  a.gain.setValueAtTime(.0001, t); a.gain.exponentialRampToValueAtTime(g, t + .012); a.gain.exponentialRampToValueAtTime(.0001, t + d + (bell ? .3 : .08));
+  osc.connect(a); a.connect(master); osc.start(t); osc.stop(t + d + .4);
+  if (bell) tone(f * 2.4, s, d * .6, { g: g * .4 }, t0);
+}
+const sfx = {
+  init,
+  play(n, k = 1) { if (!on || !ctx || !SND[n]) return; if (ctx.state === 'suspended') ctx.resume(); const t0 = ctx.currentTime + .01; for (const [f, s, d, o] of SND[n]) tone(f * k, s, d, o && o.to ? { ...o, to: o.to * k } : o, t0); },
+  setOn(v) { on = v; }, setVol(v) { vol = v; if (master) master.gain.value = v * .6; },
+};
+
+// 屏幕绘制：240×240 圆屏。face=表情，text=底部文字，T=全局时间，age=本次动作已播放秒数
+const P = Math.PI, C = '#f3efe0', BG = '#0c171b', CO = '#ff7a6b';
+const GLOW = { wink: 0xffc15e, think: 0x9aa8ff, scared: 0x6fd0ff, dance: 0xe6ff4d, dizzy: 0xff9a3d, no: 0xff7a6b, lowbat: 0xff5a4d, charging: 0xe6ff4d, full: 0x8fe38a, boot: 0x8fe3d6, offline: 0x8896a0, chat: 0x6fd0ff, stick: 0xffffff, clock: 0x8fe3d6, gsend: 0xe6ff4d, grecv: 0xffd35e, replyWait: 0x8fe3d6, replyDone: 0xe6ff4d, idle: 0x8fe3d6, happy: 0xe6ff4d, curious: 0x8fe3d6, shy: 0xff9a8f, pressed: 0xff7a6b, greeting: 0xe6ff4d,
+  eat: 0xffc15e, water: 0x6fd0ff, off: 0xe6ff4d, energy: 0xe6ff4d, night: 0x7a8cff, thanks: 0xff9a8f, miss: 0xff7aa8,
+  msg: 0x6fd0ff, cheer: 0xff9a3d, sleepy: 0x9aa8ff, wow: 0xffe14d, sad: 0x6f8cb8, love: 0xff6f9a };
+const EXPR_NAMES = { idle: '柔和待机', happy: '开心', curious: '好奇', shy: '害羞', pressed: '按压中', greeting: '拍了拍你' };
+const BLUSH = { shy: 1.3, thanks: 1.2, love: 1.15, sad: 0.35, wow: 0.6, night: 0.7, sleepy: 0.7 };
+const hex = n => '#' + n.toString(16).padStart(6, '0');
+const HOLD = { p: 0 }, GREET = { cap: '', remaining: 0, progress: 0 }; // 长按进度（0~1）/ 拍一拍界面的说明文字
+
+function drawScreen(g, face, text, T, age, blink) {
+  const b = blink ? 0.12 : 1, sn = Math.sin;
+  const rs = () => { g.strokeStyle = g.fillStyle = C; g.lineWidth = 9; g.globalAlpha = 1; };
+  const eye = (x, y, w, h) => { g.beginPath(); g.ellipse(x, y, w, Math.max(h, 2), 0, 0, 7); g.fill(); };
+  const arc = (x, y, r, a, c) => { g.beginPath(); g.arc(x, y, r, a, c); g.stroke(); };
+  const line = (a, b2, c, d) => { g.beginPath(); g.moveTo(a, b2); g.lineTo(c, d); g.stroke(); };
+  const heart = (x, y, s, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x, y + s * .35); g.bezierCurveTo(x - s, y - s * .3, x - s * .5, y - s, x, y - s * .45); g.bezierCurveTo(x + s * .5, y - s, x + s, y - s * .3, x, y + s * .35); g.fill(); };
+  const star = (x, y, s, col) => { g.fillStyle = col; g.beginPath(); for (let i = 0; i < 8; i++) { const r = i % 2 ? s * .35 : s, a = i * P / 4 - P / 2; g.lineTo(x + r * Math.cos(a), y + r * Math.sin(a)); } g.fill(); };
+  const drop = (x, y, s, col) => { g.fillStyle = col; g.beginPath(); g.moveTo(x, y - s * 1.4); g.bezierCurveTo(x + s * .4, y - s * .5, x + s, y, x + s, y + s * .45); g.arc(x, y + s * .45, s, 0, P); g.bezierCurveTo(x - s, y, x - s * .4, y - s * .5, x, y - s * 1.4); g.fill(); };
+  const zz = () => { for (let i = 0; i < 2; i++) { const p = (T * .5 + i * .5) % 1; g.globalAlpha = sn(P * p); g.fillStyle = '#9aa8ff'; g.font = `bold ${12 + 8 * p}px DeskFace`; g.textAlign = 'center'; g.fillText('Z', 150 + p * 24 + i * 4, 100 - p * 40); } };
+  const happyEyes = (y = 104, r = 20) => { arc(82, y, r, P * 1.1, P * 1.9); arc(158, y, r, P * 1.1, P * 1.9); };
+  const batt = (cx, cy, lv, col) => { g.strokeStyle = C; g.lineWidth = 6; g.strokeRect(cx - 38, cy - 16, 72, 32); g.fillStyle = C; g.fillRect(cx + 36, cy - 6, 6, 12); g.fillStyle = col; g.fillRect(cx - 32, cy - 10, 60 * Math.max(0, Math.min(1, lv)), 20); };
+
+  g.save(); g.clearRect(0, 0, 240, 240); g.beginPath(); g.arc(120, 120, 120, 0, 7); g.clip();
+  g.fillStyle = BG; g.fillRect(0, 0, 240, 240); g.lineCap = g.lineJoin = 'round'; rs();
+  if (face === 'chat' || face === 'stick' || face === 'clock' || face === 'gsend' || face === 'grecv' || face === 'replyWait' || face === 'replyDone') { if (face === 'chat') drawChat(g, T, age); else if (face === 'stick') drawStick(g, T, age); else if (face === 'clock') drawClock(g, T, age, blink); else drawGreet(g, T, age, face);
+    if (face !== 'clock' && face !== 'replyWait') { g.globalAlpha = 1; g.strokeStyle = hex(GLOW[face]); g.lineWidth = face === 'stick' ? 6 : 10; g.beginPath(); g.arc(120, 120, 114, 0, 7); g.stroke(); } g.restore(); return; }
+  g.save();
+  if (text) { g.translate(120, 106); g.scale(.8, .8); g.translate(-120, -112); }
+  switch (face) {
+    case 'happy': happyEyes(112, 22); arc(120, 128, 36, P * .12, P * .88); break;
+    case 'curious': eye(78, 104, 17, 22 * b); eye(162, 98, 25, 31 * b); g.beginPath(); g.ellipse(120, 168, 9, 12, 0, 0, 7); g.stroke(); break;
+    case 'shy': arc(82, 96, 20, P * .1, P * .9); arc(158, 96, 20, P * .1, P * .9);
+      g.beginPath(); g.moveTo(98, 166); g.quadraticCurveTo(110, 156, 120, 166); g.quadraticCurveTo(130, 176, 142, 166); g.stroke(); break;
+    case 'pressed': happyEyes(104, 22); g.beginPath(); g.arc(120, 124, 30, 0, P); g.closePath(); g.fill(); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 148, 14, 8, 0, 0, P); g.fill();
+      star(48, 64, 8 + 3 * sn(T * 10), '#ffe14d'); star(192, 64, 8 + 3 * sn(T * 10 + 2), '#ffe14d'); break;
+    case 'greeting': eye(82, 100, 20, 26 * b); eye(158, 100, 20, 26 * b); g.beginPath(); g.arc(120, 142, 34, 0, P); g.fill();
+      g.fillStyle = CO; g.beginPath(); g.arc(120, 168, 16, 0, P); g.fill();
+      if (!text) { g.fillStyle = C; g.font = 'bold 26px DeskFace'; g.textAlign = 'center'; g.fillText('Hi!', 120, 212); } break;
+    case 'eat': { happyEyes(100, 18); const o = 5 + 9 * Math.abs(sn(T * 11)); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 138, 16, o, 0, 0, 7); g.fill();
+      g.fillStyle = '#f6eedd'; g.beginPath(); g.arc(120, 160, 42, 0, P); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(120, 160, 32, P, 0); g.fill();
+      g.strokeStyle = '#ffc15e'; g.lineWidth = 5; line(138, 150, 172, 112 + 2 * sn(T * 11)); line(148, 156, 182, 120 + 2 * sn(T * 11)); } break;
+    case 'water': eye(82, 104, 14, 20 * b); eye(158, 104, 14, 20 * b); arc(120, 136, 20, P * .15, P * .85);
+      drop(186, 62 + 4 * sn(T * 4), 16, '#6fd0ff'); drop(52, 40 + (T * 50) % 70, 9, 'rgba(111,208,255,.6)'); break;
+    case 'off': happyEyes(102, 19); g.beginPath(); g.arc(120, 126, 30, 0, P); g.closePath(); g.fill(); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 146, 14, 8, 0, 0, 7); g.fill();
+      for (let i = 0; i < 7; i++) { g.save(); g.translate(30 + i * 30, (T * 70 + i * 43) % 150 + 8); g.rotate(T * 4 + i); g.fillStyle = ['#ff7a6b', '#e6ff4d', '#8fe3d6'][i % 3]; g.fillRect(-4, -2, 8, 4); g.restore(); } break;
+    case 'energy': { const s = 20 + 3 * sn(T * 10); star(82, 100, s, C); star(158, 100, s, C); arc(120, 128, 28, P * .12, P * .88);
+      g.fillStyle = '#e6ff4d'; g.beginPath(); [[182, 34], [162, 70], [176, 70], [166, 102], [196, 60], [180, 60]].forEach(([x, y], i) => i ? g.lineTo(x, y + 2 * sn(T * 14)) : g.moveTo(x, y)); g.fill(); } break;
+    case 'night': arc(82, 104, 18, P * .12, P * .88); arc(158, 104, 18, P * .12, P * .88); arc(120, 138, 10, P * .15, P * .85);
+      g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(184, 58, 16, 0, 7); g.fill(); g.fillStyle = BG; g.beginPath(); g.arc(191, 53, 14, 0, 7); g.fill(); zz(); break;
+    case 'thanks': happyEyes(102, 18); arc(120, 128, 24, P * .15, P * .85);
+      star(46, 60, 10 + 3 * sn(T * 6), '#ffe14d'); star(198, 64, 8 + 3 * sn(T * 6 + 2), '#ffe14d'); star(120, 48, 7 + 2 * sn(T * 6 + 4), '#ff9a8f'); break;
+    case 'miss': for (const x of [82, 158]) { eye(x, 104, 17, 22 * b); g.fillStyle = '#6fa8ff'; g.beginPath(); g.ellipse(x, 118, 13, 5, 0, 0, 7); g.fill(); g.fillStyle = C; }
+      g.beginPath(); g.moveTo(104, 146); g.quadraticCurveTo(112, 138 + sn(T * 8) * 2, 120, 146); g.quadraticCurveTo(128, 154, 136, 146); g.stroke();
+      for (let i = 0; i < 2; i++) { const p = (T * .45 + i * .5) % 1; g.globalAlpha = sn(P * p); heart(100 + i * 40 + 8 * sn(T * 3 + i), 70 - p * 34, 10 + 4 * p, '#ff7aa8'); } break;
+    case 'msg': eye(82, 104, 15, 22 * b); eye(158, 104, 15, 22 * b); g.beginPath(); g.ellipse(120, 146, 8, 10, 0, 0, 7); g.stroke();
+      g.save(); g.translate(168, 56); g.rotate(.18 * sn(T * 18) * (age < 1.2 ? 1 : .2)); g.fillStyle = C; g.fillRect(-24, -16, 48, 32);
+      g.strokeStyle = '#2a4a55'; g.lineWidth = 3; g.beginPath(); g.moveTo(-24, -15); g.lineTo(0, 3); g.lineTo(24, -15); g.stroke(); g.restore();
+      g.fillStyle = CO; g.beginPath(); g.arc(188, 42, 7 + 2 * sn(T * 8), 0, 7); g.fill(); break;
+    case 'cheer': g.lineWidth = 7; line(62, 78, 100, 88); line(178, 78, 140, 88); g.lineWidth = 9; eye(82, 106, 15, 19 * b); eye(158, 106, 15, 19 * b);
+      g.beginPath(); g.arc(120, 128, 26, 0, P); g.closePath(); g.fill(); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 146, 12, 7, 0, 0, 7); g.fill();
+      star(40, 66, 9 + 3 * sn(T * 9), '#ffb35e'); star(200, 70, 8 + 3 * sn(T * 9 + 2), '#ffb35e'); break;
+    case 'sleepy': { g.lineWidth = 8; line(64, 104 + sn(T * 2) * 2, 100, 110); line(176, 104 + sn(T * 2) * 2, 140, 110);
+      const y = .5 + .5 * sn(T * 1.6); g.beginPath(); g.ellipse(120, 148, 8 + 8 * y, 6 + 12 * y, 0, 0, 7); g.stroke(); zz(); } break;
+    case 'wow': for (const x of [82, 158]) { g.fillStyle = C; eye(x, 100, 22, 28 * b); g.fillStyle = BG; g.beginPath(); g.arc(x, 100, 8, 0, 7); g.fill(); }
+      g.beginPath(); g.ellipse(120, 150, 12, 16, 0, 0, 7); g.stroke(); g.fillStyle = '#ffe14d'; g.font = `bold ${38 + 4 * sn(T * 12)}px DeskFace`; g.textAlign = 'center'; g.fillText('!', 180, 72); break;
+    case 'sad': g.lineWidth = 7; line(62, 82, 98, 70); line(178, 82, 142, 70); g.lineWidth = 9; eye(82, 108, 14, 17 * b); eye(158, 108, 14, 17 * b);
+      g.fillStyle = '#6fa8ff'; g.beginPath(); g.ellipse(66, 128 + ((T * .6) % 1) * 20, 5, 7, 0, 0, 7); g.fill(); arc(120, 176, 24, P * 1.2, P * 1.8); break;
+    case 'love': { const s = 22 + 2.5 * sn(T * 8); heart(82, 100, s, '#ff6f9a'); heart(158, 100, s, '#ff6f9a'); arc(120, 134, 24, P * .15, P * .85);
+      for (let i = 0; i < 3; i++) { const p = (T * .5 + i / 3) % 1; g.globalAlpha = sn(P * p); heart(60 + i * 60 + 6 * sn(T * 3 + i), 58 - p * 20, 8 + 5 * p, '#ff9ab8'); } } break;
+    case 'wink': arc(82, 106, 17, P * 1.1, P * 1.9); eye(158, 104, 16, 23 * b); arc(120, 134, 26, P * .12, P * .88); g.fillStyle = CO; g.beginPath(); g.ellipse(132, 154, 8, 6, 0, 0, P); g.fill(); star(194, 76, 9 + 3 * sn(T * 9), '#ffe14d'); break;
+    case 'think': for (const x of [82, 158]) { g.fillStyle = C; eye(x, 102, 16, 22 * b); g.fillStyle = BG; g.beginPath(); g.arc(x - 6, 94, 6, 0, 7); g.fill(); } line(104, 148, 128, 144);
+      g.fillStyle = C; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(150 + i * 14, 58 - i * 5, 3 + i * 1.5 + (sn(T * 4 - i) > .6 ? 1.5 : 0), 0, 7); g.fill(); } break;
+    case 'scared': for (const x of [82, 158]) { g.fillStyle = C; eye(x, 100, 20, 26 * b); g.fillStyle = BG; g.beginPath(); g.arc(x + sn(T * 30) * 2, 102, 5, 0, 7); g.fill(); }
+      g.strokeStyle = C; g.beginPath(); g.moveTo(98, 150); for (let i = 1; i <= 5; i++) g.lineTo(98 + i * 8, 150 + (i % 2 ? -6 : 6)); g.stroke(); drop(190, 70 + 3 * sn(T * 5), 9, '#6fd0ff'); break;
+    case 'dance': happyEyes(100, 18); g.beginPath(); g.arc(120, 124, 28, 0, P); g.closePath(); g.fill(); g.fillStyle = CO; g.beginPath(); g.ellipse(120, 144, 12, 7, 0, 0, 7); g.fill();
+      g.fillStyle = '#e6ff4d'; g.font = 'bold 30px DeskFace'; g.textAlign = 'center'; for (let i = 0; i < 2; i++) { const p = (T * .8 + i * .5) % 1; g.globalAlpha = sn(P * p); g.fillText(i ? '♫' : '♪', 50 + i * 140 + 6 * sn(T * 5 + i), 92 - p * 36); } break;
+    case 'dizzy': for (const x of [82, 158]) { g.lineWidth = 4; g.beginPath(); for (let a = 0; a < 12; a += .35) { const r = 2 + a * 1.7; g.lineTo(x + r * Math.cos(a + T * 6), 102 + r * Math.sin(a + T * 6)); } g.stroke(); }
+      g.lineWidth = 9; g.beginPath(); g.moveTo(98, 150); g.bezierCurveTo(108, 138 + 6 * sn(T * 5), 132, 162 - 6 * sn(T * 5), 142, 150); g.stroke(); break;
+    case 'no': g.lineWidth = 7; line(60, 74, 100, 88); line(180, 74, 140, 88); g.lineWidth = 9; eye(82, 106, 12, 13 * b); eye(158, 106, 12, 13 * b);
+      g.beginPath(); g.moveTo(100, 152); g.quadraticCurveTo(110, 144, 120, 152); g.quadraticCurveTo(130, 160, 140, 152); g.stroke(); break;
+    case 'lowbat': line(64, 100, 100, 108); line(176, 100, 140, 108); batt(120, 140, .12 + .02 * sn(T * 5), sn(T * 5) > -.2 ? '#ff5a4d' : '#7a2a2a'); break;
+    case 'charging': happyEyes(98, 17); batt(120, 140, (T * .35) % 1, '#e6ff4d'); break;
+    case 'full': happyEyes(98, 17); batt(120, 140, 1, '#8fe38a'); star(52, 70, 10 + 3 * sn(T * 6), '#ffe14d'); star(188, 70, 9 + 3 * sn(T * 6 + 2), '#ffe14d'); break;
+    case 'boot': { const o = Math.min(1, age / .9); eye(82, 104, 16, 23 * o * b); eye(158, 104, 16, 23 * o * b); g.lineWidth = 7; arc(120, 150, 14, P * 1.5 + .7, P * 3.5 - .7); line(120, 134, 120, 150); } break;
+    case 'offline': line(64, 104, 100, 104); line(176, 104, 140, 104); g.lineWidth = 6; for (const r of [10, 20, 30]) arc(120, 160, r, P * 1.25, P * 1.75); eye(120, 160, 3, 3);
+      g.strokeStyle = CO; line(96, 170, 144, 128); break;
+    default: eye(82, 104, 16, 23 * b); eye(158, 104, 16, 23 * b); arc(120, 142, 20, P * .15, P * .85);
+  }
+  rs();
+  const k = BLUSH[face] ?? 1; g.fillStyle = `rgba(255,122,107,${Math.min(.95, .55 * k)})`;
+  for (const x of [50, 190]) { g.beginPath(); g.ellipse(x, 148, 20 * Math.min(k, 1.3), 11 * Math.min(k, 1.3), 0, 0, 7); g.fill(); }
+  g.restore();
+  if (text) { // 底部文字：淡入 + 轻微弹出，自动缩字号以免出圆
+    const a = Math.min(1, age / .2), pop = 1 + .22 * Math.max(0, 1 - age / .3);
+    g.save(); g.globalAlpha = a; g.translate(120, 186 + (1 - a) * 12); g.scale(pop, pop);
+    let fs = 26; const f = () => `bold ${fs}px DeskFace`; g.font = f();
+    while (g.measureText(text).width > 160 && fs > 14) { fs--; g.font = f(); }
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = hex(GLOW[face] ?? 0xf3efe0); g.fillText(text, 0, 0); g.restore();
+  }
+  g.globalAlpha = 1; g.strokeStyle = hex(GLOW[face] ?? GLOW.idle); g.lineWidth = 10; g.beginPath(); g.arc(120, 120, 114, 0, 7); g.stroke();
+  if (HOLD.p > 0) { const p = HOLD.p, a = -P / 2 + 2 * P * p; g.lineCap = 'round'; g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,.2)'; g.beginPath(); g.arc(120, 120, 113, 0, 7); g.stroke(); // 长按进度环
+    g.strokeStyle = p >= 1 ? '#fff' : '#e6ff4d'; g.beginPath(); g.arc(120, 120, 113, -P / 2, a); g.stroke(); g.fillStyle = CO; g.beginPath(); g.arc(120 + 113 * Math.cos(a), 120 + 113 * Math.sin(a), 7, 0, 7); g.fill(); }
+  g.restore();
+}
+
+// ---------- 拍一拍动画：发送光波 / 接收轻拍 / 回传开心反馈 ----------
+function drawGreet(g, T, age, face) {
+  const sn = Math.sin, cs = Math.cos, cap = GREET.cap, fnt = n => `bold ${n}px DeskFace`;
+  const star = (x, y, s, c) => { g.fillStyle = c; g.beginPath(); for (let i = 0; i < 8; i++) { const r = i % 2 ? s * .35 : s, a = i * P / 4 - P / 2; g.lineTo(x + r * cs(a), y + r * sn(a)); } g.fill(); };
+  const heart = (x, y, s, c) => { g.fillStyle = c; g.beginPath(); g.moveTo(x, y + s * .35); g.bezierCurveTo(x - s, y - s * .3, x - s * .5, y - s, x, y - s * .45); g.bezierCurveTo(x + s * .5, y - s, x + s, y - s * .3, x, y + s * .35); g.fill(); };
+  const wait = face === 'replyWait', done = face === 'replyDone';
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineCap = 'round';
+  if (face === 'gsend') {
+    for (let i = 0; i < 3; i++) { const p = (age * .8 + i / 3) % 1; g.strokeStyle = `rgba(230,255,77,${(1 - p) * .85})`; g.lineWidth = 5 * (1 - p) + 1; g.beginPath(); g.arc(120, 100, 26 + p * 78, 0, 7); g.stroke(); } // 光波向外扩散
+    const s = .75 + .25 * Math.min(1, age / .3) + .04 * sn(T * 8); g.save(); g.translate(120, 100); g.scale(s, s);
+    g.strokeStyle = g.fillStyle = '#f3efe0'; g.lineWidth = 8; for (const x of [-26, 26]) { g.beginPath(); g.arc(x, -4, 15, P * 1.1, P * 1.9); g.stroke(); }
+    g.beginPath(); g.arc(0, 8, 24, 0, P); g.closePath(); g.fill(); g.fillStyle = '#ff7a6b'; g.beginPath(); g.ellipse(0, 28, 11, 6, 0, 0, P); g.fill();
+    g.fillStyle = 'rgba(255,122,107,.6)'; for (const x of [-48, 48]) { g.beginPath(); g.ellipse(x, 14, 12, 7, 0, 0, 7); g.fill(); } g.restore();
+    for (let i = 0; i < 3; i++) { const p = (age * .9 + i / 3) % 1; g.globalAlpha = sn(P * p); heart(70 + i * 50 + 6 * sn(T * 3 + i), 70 - p * 22, 8 + 4 * p, '#ff7a6b'); } g.globalAlpha = 1;
+    g.fillStyle = '#fff6e8'; g.font = fnt(16); g.fillText(age < 1.6 ? cap + '.'.repeat(1 + Math.floor(T * 3) % 3) : '拍一拍已发出 ✓', 120, 190);
+  } else {
+    const bounce = Math.sin(Math.min(1, age / .7) * P) * 3;
+    // 复用“该下班了”的表情：弯眼、开心张嘴、腮红和飘动的小彩条。
+    g.strokeStyle = g.fillStyle = '#f3efe0'; g.lineWidth = 8;
+    g.beginPath(); g.arc(82, 104 + bounce, 18, P * 1.1, P * 1.9); g.stroke();
+    g.beginPath(); g.arc(158, 104 - bounce, 18, P * 1.1, P * 1.9); g.stroke();
+    g.beginPath(); g.arc(120, 126, 30, 0, P); g.closePath(); g.fill();
+    g.fillStyle = '#ff7a6b'; g.beginPath(); g.ellipse(120, 147, 14, 8 + 2 * Math.abs(sn(T * 8)), 0, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,122,107,.62)'; for (const x of [54, 186]) { g.beginPath(); g.ellipse(x, 143, 14, 8, 0, 0, 7); g.fill(); }
+    heart(120, 57 + bounce * .3, done ? 15 + 2 * sn(T * 6) : 13 + 2 * sn(T * 6), done ? '#ff7a6b' : '#ff9ab8');
+    for (let i = 0; i < 6; i++) { const x = 34 + i * 34, y = 68 + ((T * 24 + i * 23) % 45); g.save(); g.translate(x, y); g.rotate(T * 4 + i); g.fillStyle = ['#ff7a6b', '#e6ff4d', '#8fe3d6'][i % 3]; g.fillRect(-4, -2, 8, 4); g.restore(); }
+    if (wait) {
+      const p = clamp(GREET.progress ?? 0, 0, 1), a = -P / 2 + 2 * P * p, r = 114;
+      g.lineWidth = 10; g.strokeStyle = 'rgba(255,255,255,.14)'; g.beginPath(); g.arc(120, 120, r, 0, 7); g.stroke();
+      g.strokeStyle = '#8fe3d6'; g.lineWidth = 10; g.beginPath(); g.arc(120, 120, r, -P / 2, a); g.stroke();
+      g.fillStyle = '#8fe3d6'; g.beginPath(); g.arc(120 + r * Math.cos(a), 120 + r * Math.sin(a), 6, 0, 7); g.fill();
+    }
+    g.fillStyle = '#fff6e8';
+    if (wait) {
+      let fs = 18; g.font = fnt(fs); while (g.measureText(cap).width > 214 && fs > 14) { fs--; g.font = fnt(fs); }
+      g.fillText(cap, 120, 181); g.font = fnt(17); g.fillText('轻拍回复', 120, 207);
+    } else {
+      let fs = 19; g.font = fnt(fs); while (g.measureText(cap).width > 214 && fs > 14) { fs--; g.font = fnt(fs); } g.fillText(cap, 120, 204);
+    }
+    g.globalAlpha = 1;
+  }
+}
+
+// ---------- 待机时间界面：时间 + 会眨眼、会东张西望的小表情 ----------
+function drawClock(g, T, age, blink) {
+  const d = new Date(), h = d.getHours(), m = d.getMinutes(), s = d.getSeconds() + d.getMilliseconds() / 1000, hf = h + m / 60, sn = Math.sin;
+  const night = h >= 22 || h < 6, lunch = hf >= 11.5 && hf < 13, morning = h >= 6 && h < 9, pop = s < 1.4, col = night ? '#7a8cff' : '#8fe3d6', CR = '#f3efe0';
+  g.lineCap = 'round'; g.lineWidth = 6; g.strokeStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.arc(120, 120, 114, 0, 7); g.stroke(); // 秒针环
+  g.strokeStyle = col; g.beginPath(); g.arc(120, 120, 114, -P / 2, -P / 2 + 2 * P * s / 60); g.stroke();
+  g.strokeStyle = g.fillStyle = CR; g.lineWidth = 6; const gx = 5 * sn(T * .6) * Math.max(0, sn(T * .17 + 1)); // 偶尔看向一侧
+  for (const x of [96, 144]) {
+    if (night) { g.beginPath(); g.arc(x, 62, 8, P * .12, P * .88); g.stroke(); }
+    else if (pop) { g.beginPath(); g.arc(x, 66, 8, P * 1.1, P * 1.9); g.stroke(); } // 每分钟换时弯眼笑一下
+    else { g.beginPath(); g.ellipse(x + gx, 62, 6, blink ? 1.5 : 9, 0, 0, 7); g.fill(); }
+  }
+  g.lineWidth = 5; g.beginPath(); g.arc(120, pop ? 74 : 78, pop ? 14 : 10, P * .2, P * .8); g.stroke();
+  g.fillStyle = 'rgba(255,122,107,.45)'; for (const x of [74, 166]) { g.beginPath(); g.ellipse(x, 80, 9, 5, 0, 0, 7); g.fill(); }
+  if (night) { g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(176, 58, 10, 0, 7); g.fill(); g.fillStyle = '#0c171b'; g.beginPath(); g.arc(181, 54, 9, 0, 7); g.fill();
+    g.fillStyle = '#9aa8ff'; g.font = 'bold 14px DeskFace'; g.textAlign = 'center'; g.globalAlpha = .4 + .6 * Math.abs(sn(T * 1.3)); g.fillText('z', 62, 54); g.globalAlpha = .4 + .6 * Math.abs(sn(T * 1.3 + 1)); g.fillText('Z', 52, 42); g.globalAlpha = 1; }
+  else if (morning) { g.strokeStyle = g.fillStyle = '#ffd35e'; g.lineWidth = 3; g.beginPath(); g.arc(176, 58, 5, 0, 7); g.fill(); for (let i = 0; i < 8; i++) { const a = i * P / 4 + T * .5; g.beginPath(); g.moveTo(176 + 9 * Math.cos(a), 58 + 9 * Math.sin(a)); g.lineTo(176 + 13 * Math.cos(a), 58 + 13 * Math.sin(a)); g.stroke(); } }
+  else if (lunch) { g.fillStyle = '#f6eedd'; g.beginPath(); g.arc(176, 66, 11, 0, P); g.fill(); g.strokeStyle = 'rgba(243,239,224,.7)'; g.lineWidth = 2.5;
+    for (const k of [-5, 0, 5]) { g.beginPath(); g.moveTo(176 + k, 52); g.quadraticCurveTo(176 + k + 3 * sn(T * 3 + k), 47, 176 + k, 42); g.stroke(); } }
+  const str = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'), cw = [32, 32, 16, 32, 32]; let x = 48;
+  g.font = 'bold 52px DeskClock'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff6e8';
+  for (let i = 0; i < 5; i++) { g.globalAlpha = i === 2 && s % 1 > .5 ? .25 : 1; g.fillText(str[i], x + cw[i] / 2, 124); x += cw[i]; } g.globalAlpha = 1;
+  g.font = 'bold 15px DeskFace'; g.fillStyle = col; g.fillText(`周${'日一二三四五六'[d.getDay()]}  ${d.getMonth() + 1}/${d.getDate()}`, 120, 168);
+  g.font = '13px DeskFace'; g.fillStyle = 'rgba(243,239,224,.7)';
+  g.fillText(night ? '夜深了，早点休息' : lunch ? '该吃饭啦' : hf < 11.5 ? '早上好' : h < 18 ? '下午好' : '晚上好', 120, 192);
+}
+
+// ---------- 朋友消息界面（常规 IM 风格：深色底 + 浅色气泡）----------
+const CHAT = { name: '', pages: [], starts: [], total: 3 };
+const CF = n => `600 ${n}px DeskFace`;
+function layoutChat(g, text, name) { // 按宽度逐字换行（英文优先在空格处断），每页最多 3 行，超过自动分页
+  g.save(); g.font = CF(18); const lines = []; let cur = '';
+  for (const ch of Array.from(text)) {
+    if (g.measureText(cur + ch).width > 132 && cur) { const sp = cur.lastIndexOf(' ');
+      if (ch !== ' ' && sp > 0) { lines.push(cur.slice(0, sp)); cur = cur.slice(sp + 1) + ch; } else { lines.push(cur); cur = ch === ' ' ? '' : ch; }
+    } else cur += ch;
+  }
+  if (cur) lines.push(cur); g.restore();
+  CHAT.name = name; CHAT.pages = []; for (let i = 0; i < lines.length; i += 3) CHAT.pages.push(lines.slice(i, i + 3));
+  let t = .9; CHAT.starts = CHAT.pages.map(p => { const st = t; t += Math.max(2, p.join('').length * .08 + 1.5); return st; }); CHAT.total = t + .4; return CHAT.total;
+}
+const chatPage = age => { let p = -1; CHAT.starts.forEach((st, i) => { if (age >= st) p = i; }); return p; };
+function bubble(g, x, y, w, h) {
+  g.fillStyle = '#e9eff0'; g.beginPath(); g.moveTo(x + 12, y); g.arcTo(x + w, y, x + w, y + h, 12); g.arcTo(x + w, y + h, x, y + h, 12); g.arcTo(x, y + h, x, y, 12); g.arcTo(x, y, x + w, y, 12); g.fill();
+  g.beginPath(); g.moveTo(x + 2, y + h - 10); g.lineTo(x - 5, y + h + 2); g.lineTo(x + 12, y + h - 2); g.fill();
+}
+function drawChat(g, T, age) {
+  const nm = CHAT.name, ch = Array.from(nm)[0] || '?'; g.font = CF(15); const nw = Math.min(90, g.measureText(nm).width), sx = 120 - (32 + nw) / 2;
+  g.fillStyle = '#2f5d57'; g.beginPath(); g.arc(sx + 12, 42, 12, 0, 7); g.fill();
+  g.fillStyle = '#fff'; g.font = CF(14); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(ch, sx + 12, 43);
+  g.fillStyle = '#9fb4b8'; g.font = CF(15); g.textAlign = 'left'; g.fillText(nm, sx + 32, 42);
+  const pi = chatPage(age);
+  if (pi < 0) { bubble(g, 90, 98, 60, 34); g.fillStyle = '#7d8f93'; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(106 + i * 14, 115 - 3 * Math.max(0, Math.sin(T * 7 - i * 1.1)), 3.5, 0, 7); g.fill(); } return; } // 对方正在输入
+  const lines = CHAT.pages[pi], loc = age - CHAT.starts[pi]; g.font = CF(18);
+  const bw = Math.max(72, Math.min(156, Math.max(...lines.map(l => g.measureText(l).width)) + 24)), bh = lines.length * 24 + 20, bx = 120 - bw / 2, by = 118 - bh / 2;
+  const p = Math.min(1, loc / .25), e = 1 - (1 - p) ** 3; // 淡入 + 轻微上滑
+  g.save(); g.globalAlpha = e; g.translate(0, 8 * (1 - e)); bubble(g, bx, by, bw, bh);
+  g.fillStyle = '#10201f'; g.textAlign = 'left'; g.textBaseline = 'middle'; lines.forEach((l, j) => g.fillText(l, bx + 12, by + 22 + j * 24));
+  const d = new Date(); g.fillStyle = '#7d8f93'; g.font = CF(11); g.textAlign = 'right'; g.fillText(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'), bx + bw, by + bh + 14); g.restore();
+  const np = CHAT.pages.length; if (np > 1) for (let i = 0; i < np; i++) { g.fillStyle = i === pi ? '#e9eff0' : 'rgba(255,255,255,.25)'; g.beginPath(); g.arc(120 + (i - (np - 1) / 2) * 12, 192, i === pi ? 3.5 : 3, 0, 7); g.fill(); }
+}
+
+// ---------- 黑白像素火柴人（表情包 / 摄像头同步）----------
+const STICK = { anim: 'idle', j: null, prev: null };
+const HIPY = 34, D0 = { dy: 0, lean: 0, bow: 0, m: 'smile', e: 'open', aL: [-.15, -.1], aR: [.15, .1], lL: [-.08, 0], lR: [.08, 0] };
+const STICKERS = { // 表情包：n=名称，f(t)=姿态（角度=与垂直向下的夹角，弧度）；道具见 props()
+  idle:     { n: '待机',   f: t => ({ dy: Math.sin(t * 2) * .5 }) },
+  wave:     { n: '挥手',   f: t => { const s = Math.sin(t * 9); return { aR: [2.5 + .25 * s, .7 * s] }; } },
+  heart:    { n: '比心',   f: t => ({ dy: Math.sin(t * 4) * .6, aL: [-2.4, -1.4], aR: [2.4, 1.4] }) },
+  cheer:    { n: '加油',   f: t => { const s = Math.sin(t * 8); return { dy: -Math.abs(s) * 1.5, aR: [2.9 + .15 * s, .2], aL: [-.4, -1.3], m: 'open' }; } },
+  jack:     { n: '开合跳', f: t => { const u = (Math.sin(t * 6) + 1) / 2; return { dy: -2.5 * u, aL: [-.2 - 2.6 * u, -.1], aR: [.2 + 2.6 * u, .1], lL: [-.06 - .4 * u, 0], lR: [.06 + .4 * u, 0], m: 'open' }; } },
+  dance:    { n: '跳舞',   f: t => { const s = Math.sin(t * 6), a = Math.abs(s); return { dy: -a * 2, lean: Math.sin(t * 3) * .35, aL: [-2.3 + .5 * s, -.5], aR: [2.3 + .5 * s, .5], lL: [-.25, .5 * a], lR: [.25, .5 * a], m: 'open' }; } },
+  bow:      { n: '谢谢',   f: t => ({ bow: (Math.sin(t * 2.2 - 1.57) + 1) / 2, aL: [-.15, 0], aR: [.15, 0] }) },
+  sleep:    { n: '困困',   f: t => ({ bow: .8 * (Math.sin(t * 1.5) + 1) / 2, e: 'closed', m: 'o', lean: Math.sin(t * 1.5) * .15 }) },
+  confused: { n: '疑惑',   f: t => ({ lean: Math.sin(t * 2) * .3, aR: [2.4, 1.8], m: 'flat' }) },
+  cry:      { n: '哭哭',   f: t => ({ dy: Math.sin(t * 10) * .4, aL: [-2.3, -1.6], aR: [2.3, 1.6], m: 'frown' }) },
+  shrug:    { n: '摊手',   f: t => ({ dy: -.8 * Math.abs(Math.sin(t * 3)), aL: [-1.4, -.8], aR: [1.4, .8], m: 'flat' }) },
+  stretch:  { n: '伸懒腰', f: t => { const u = (Math.sin(t * 1.5 - 1.57) + 1) / 2; return { lean: -.3 * u, aL: [-.2 - 2.9 * u, -.1], aR: [.2 + 2.9 * u, .1], m: 'o' }; } },
+  run:      { n: '跑步',   f: t => { const s = Math.sin(t * 10); return { dy: -Math.abs(s) * 1.5, aL: [-.8 - .5 * s, -1.3], aR: [.8 - .5 * s, 1.3], lL: [-.15 + .6 * s, .8 * Math.max(0, s)], lR: [.15 - .6 * s, .8 * Math.max(0, -s)], m: 'open' }; } },
+};
+const pol = (x, y, a, l) => [x + l * Math.sin(a), y + l * Math.cos(a)];
+function fk(p) {
+  p = { ...D0, ...p };
+  const hip = [30 + p.lean * 3, HIPY + p.dy], neck = [hip[0] + p.lean * 5, hip[1] - 12 + 5 * p.bow], sL = [neck[0] - 3, neck[1] + 1], sR = [neck[0] + 3, neck[1] + 1];
+  const eL = pol(...sL, p.aL[0], 7), eR = pol(...sR, p.aR[0], 7), kL = pol(hip[0] - 2, hip[1], p.lL[0], 9), kR = pol(hip[0] + 2, hip[1], p.lR[0], 9);
+  return { head: [neck[0] + p.lean * 2, neck[1] - 6 + 2 * p.bow], neck, sL, sR, hip, eL, eR, hL: pol(...eL, p.aL[0] + p.aL[1], 7), hR: pol(...eR, p.aR[0] + p.aR[1], 7),
+    kL, kR, fL: pol(...kL, p.lL[0] + p.lL[1], 9), fR: pol(...kR, p.lR[0] + p.lR[1], 9), m: p.m, e: p.e };
+}
+function landmarksToJoints(l, vw, vh) { // MediaPipe 33 点 → 火柴人关节（镜像显示；看不到的部位用默认姿势补）
+  const Pt = i => [(1 - l[i].x) * vw, l[i].y * vh], vis = i => l[i].visibility ?? 1, mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  const shM = mid(Pt(11), Pt(12)), sw = Math.hypot(Pt(11)[0] - Pt(12)[0], Pt(11)[1] - Pt(12)[1]) || 1;
+  const hipM = vis(23) > .3 && vis(24) > .3 ? mid(Pt(23), Pt(24)) : [shM[0], shM[1] + sw * 1.5];
+  const k = 12 / (Math.hypot(hipM[0] - shM[0], hipM[1] - shM[1]) || 1), Q = p => [30 + (p[0] - hipM[0]) * k, HIPY + (p[1] - hipM[1]) * k];
+  const j = { head: Q(Pt(0)), neck: Q(shM), sL: Q(Pt(11)), sR: Q(Pt(12)), hip: [30, HIPY], eL: Q(Pt(13)), hL: Q(Pt(15)), eR: Q(Pt(14)), hR: Q(Pt(16)), kL: Q(Pt(25)), fL: Q(Pt(27)), kR: Q(Pt(26)), fR: Q(Pt(28)) };
+  j.head[1] -= 1; const d = fk(STICKERS.idle.f(0));
+  const arm = (s, e, hh, a, b) => { if (vis(a) < .35 || vis(b) < .35) { j[e] = [j[s][0], j[s][1] + 7]; j[hh] = [j[s][0], j[s][1] + 14]; } };
+  arm('sL', 'eL', 'hL', 13, 15); arm('sR', 'eR', 'hR', 14, 16);
+  if ([25, 26].some(i => vis(i) < .4) || [27, 28].some(i => vis(i) < .3)) for (const key of ['kL', 'fL', 'kR', 'fR']) j[key] = d[key];
+  const pv = STICK.prev; if (pv) for (const key in j) j[key] = [pv[key][0] + (j[key][0] - pv[key][0]) * .5, pv[key][1] + (j[key][1] - pv[key][1]) * .5];
+  STICK.prev = j; return j;
+}
+const G = { heart: ['.#.#.', '#####', '#####', '.###.', '..#..'], z: ['####', '..#.', '.#..', '####'], q: ['.##.', '#..#', '..#.', '....', '..#.'], ex: ['#', '#', '#', '.', '#'],
+  star: ['..#..', '..#..', '#####', '..#..', '..#..'], tear: ['.#.', '###', '###', '.#.'], sweat: ['.#', '##', '##'], note: ['.###', '.#.#', '.#..', '##..', '##..'] };
+const E_ = { open: [[-2, -1], [2, -1]], closed: [[-2, -1], [-1, -1], [1, -1], [2, -1]] };
+const M_ = { smile: [[-2, 1], [-1, 2], [0, 2], [1, 2], [2, 1]], frown: [[-2, 2], [-1, 1], [0, 1], [1, 1], [2, 2]], flat: [[-1, 2], [0, 2], [1, 2]], open: [[-1, 1], [0, 1], [1, 1], [-1, 2], [0, 2], [1, 2]], o: [[0, 1], [0, 2]] };
+const pxc = document.createElement('canvas'); pxc.width = pxc.height = 60; const pg = pxc.getContext('2d');
+const gl = (rows, x, y) => rows.forEach((r, jj) => { for (let i = 0; i < r.length; i++) if (r[i] === '#') pg.fillRect(Math.round(x) + i, Math.round(y) + jj, 1, 1); });
+function props(n, t, j) { // 表情包小道具（纯白像素）
+  const b = Math.sin(t * 6), bl = Math.floor(t * 4) % 2, hx = j.head[0], hy = j.head[1];
+  if (n === 'heart') for (let i = 0; i < 3; i++) { const p = (t * .7 + i / 3) % 1; if (p < .85) gl(G.heart, 28 + (i - 1) * 4, 9 - p * 6); }
+  else if (n === 'wave') { if (bl) gl(G.star, j.hR[0] + 2, j.hR[1] - 6); }
+  else if (n === 'cheer') { if (bl) { gl(G.ex, 38, 8); gl(G.ex, 21, 8); } }
+  else if (n === 'jack' || n === 'stretch') { gl(G.star, bl ? 14 : 41, 14); gl(G.star, bl ? 41 : 14, 24); }
+  else if (n === 'dance') { const p = (t * .9) % 1; gl(G.note, 38, 22 - p * 12); gl(G.note, 15, 26 - ((p + .5) % 1) * 12); }
+  else if (n === 'sleep') for (let i = 0; i < 2; i++) { const p = (t * .6 + i * .5) % 1; gl(G.z, 37 + p * 4, 14 - p * 8); }
+  else if (n === 'confused') gl(G.q, 37, 6 + b * .8);
+  else if (n === 'cry') for (const sx of [-1, 1]) { const y = (t * 9 + (sx > 0 ? 3 : 0)) % 10; gl(G.tear, hx + sx * 3 - 1, hy + 1 + y); }
+  else if (n === 'shrug') gl(G.sweat, hx + 6, hy - 4 + b * .5);
+  else if (n === 'run') for (let i = 0; i < 3; i++) pg.fillRect(4 + (t * 40 + i * 5) % 12, 26 + i * 7, 5, 1);
+}
+function drawStick(g, T, age) { // 60×60 点阵 → 最近邻放大 4 倍；只用黑 / 白
+  const j = STICK.j || fk((STICKERS[STICK.anim] || STICKERS.idle).f(age));
+  pg.fillStyle = '#000'; pg.fillRect(0, 0, 60, 60); pg.fillStyle = '#fff'; for (let x = 16; x < 45; x += 3) pg.fillRect(x, 54, 2, 1);
+  const hx = Math.round(j.head[0]), hy = Math.round(j.head[1]), dot = p => pg.fillRect(Math.round(p[0]) - 1, Math.round(p[1]) - 1, 2, 2);
+  const seg = (a, b) => { const n = Math.max(1, Math.ceil(Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])))); for (let i = 0; i <= n; i++) dot([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n]); };
+  [['neck', 'hip'], ['sL', 'sR'], ['sL', 'eL'], ['eL', 'hL'], ['sR', 'eR'], ['eR', 'hR'], ['hip', 'kL'], ['kL', 'fL'], ['hip', 'kR'], ['kR', 'fR']].forEach(([a, b]) => seg(j[a], j[b]));
+  seg(j.neck, [hx, hy + 4]);
+  pg.fillStyle = '#000'; for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) if (x * x + y * y <= 18) pg.fillRect(hx + x, hy + y, 1, 1); // 头：先清空再画圈
+  pg.fillStyle = '#fff'; for (let y = -4; y <= 4; y++) for (let x = -4; x <= 4; x++) { const r2 = x * x + y * y; if (r2 >= 10 && r2 <= 18) pg.fillRect(hx + x, hy + y, 1, 1); }
+  for (const [x, y] of [...(E_[j.e] || E_.open), ...(M_[j.m] || M_.smile)]) pg.fillRect(hx + x, hy + y, 1, 1);
+  if (!STICK.j) props(STICK.anim, age, j);
+  g.imageSmoothingEnabled = false; g.drawImage(pxc, 0, 0, 240, 240);
+}
+// 动作与话术：dur(秒)、幅度都在这里调。f(t) 返回相对偏移 {yaw°, pitch°(正=抬头), hop(场景单位)}，t∈[0,1]，起止均为 0。
+// 混用不同频率 + 正弦包络，避免僵硬；舵机平滑与待机呼吸摆动在 main.js 叠加。
+const P2 = 2 * Math.PI, w = (t, f, ph = 0) => Math.sin(P2 * f * t + ph), env = t => Math.sin(Math.PI * t), ab = Math.abs;
+const A = (group, name, face, dur, snd, f, text = '', after = '') => ({ group, name, face, dur, snd, f, text, after });
+const ACTIONS = {
+  wave:    A('act', '挥手问候', 'happy', 1.5, 'hi',      t => ({ yaw: 22 * w(t, 2) * env(t), pitch: 7 * w(t, 2, 1.2) * env(t) }), '', 'greeting'),
+  curious: A('act', '探头好奇', 'curious', 1.3, 'curious', t => ({ yaw: -32 * w(t, 1) * env(t) ** .5, pitch: -9 * env(t) + 5 * w(t, 2) * env(t) })),
+  happy:   A('act', '开心蹦蹦', 'happy', 1.4, 'happy',   t => ({ yaw: 12 * w(t, 3) * env(t), pitch: 4 * w(t, 2) * env(t) })),
+  shy:     A('act', '害羞躲闪', 'shy', 1.2, 'shy',       t => { const e = env(t ** .75); return { yaw: 28 * e, pitch: -15 * e }; }),
+  hi:     A('phr', '嗨，见到你啦', 'greeting', 1.8, 'hi',    t => ({ yaw: 20 * w(t, 2) * env(t), pitch: 6 * w(t, 2, 1.2) * env(t) }), '嗨，见到你啦'),
+  eat:    A('phr', '干饭干饭', 'eat', 1.8, 'eat',            t => ({ yaw: 6 * w(t, 1.5) * env(t), pitch: -4 * env(t) + 5 * w(t, 5) * env(t) }), '干饭干饭'),
+  water:  A('phr', '记得喝水', 'water', 1.8, 'water',        t => ({ yaw: 8 * w(t, 1) * env(t), pitch: 14 * env(t) ** .8 }), '记得喝水'),
+  off:    A('phr', '该下班了耶', 'off', 1.8, 'off',          t => ({ yaw: 18 * w(t, 3) * env(t), pitch: 6 * w(t, 1.5) * env(t) }), '该下班了耶'),
+  energy: A('phr', '元气满满', 'energy', 1.6, 'energy',      t => ({ yaw: 24 * w(t, 1.5) * env(t), pitch: 8 * env(t) + 3 * w(t, 4) * env(t) }), '元气满满'),
+  night:  A('phr', '晚安，好梦', 'night', 2.6, 'night',      t => ({ yaw: -10 * env(t), pitch: -14 * env(t) ** .8 }), '晚安，好梦'),
+  thanks: A('phr', '辛苦啦', 'thanks', 1.6, 'thanks',        t => ({ yaw: 6 * w(t, 1) * env(t), pitch: -12 * (.5 - .5 * Math.cos(P2 * 2 * t)) * env(t) ** .5 }), '辛苦啦'),
+  miss:   A('phr', '想你了', 'miss', 2.2, 'miss',            t => ({ yaw: 14 * w(t, 1) * env(t), pitch: -8 * env(t) }), '想你了'),
+  msg:    A('phr', '来消息了', 'msg', 1.6, 'msg',            t => ({ yaw: 18 * w(t, 4) * env(t) ** .5, pitch: 8 * env(t) }), '来消息了'),
+  cheer:  A('phr', '加油呀', 'cheer', 1.6, 'cheer',          t => ({ yaw: 10 * w(t, 2) * env(t), pitch: 8 * w(t, 2, 1.57) * env(t) }), '加油呀'),
+  sleepy: A('phr', '好困呀', 'sleepy', 2.4, 'sleepy',        t => ({ yaw: 4 * w(t, 1) * env(t), pitch: -16 * env(t) + 4 * w(t, 3) * env(t) ** 2 }), '好困呀'),
+  wow:    A('phr', '哇！', 'wow', 1.3, 'wow',               t => ({ yaw: 0, pitch: 14 * env(t) ** .6 }), '哇！'),
+  sad:    A('phr', '委屈巴巴', 'sad', 2.0, 'sad',            t => ({ yaw: 8 * w(t, 1.5) * env(t), pitch: -14 * env(t) ** .7 }), '委屈巴巴'),
+  love:   A('phr', '比心', 'love', 1.8, 'love',             t => ({ yaw: 14 * w(t, 1.5) * env(t), pitch: 6 * w(t, 1.5, 1.57) * env(t) }), '比心'),
+  yes:    A('act', '点头认同', 'happy', 1.4, 'yes',      t => ({ yaw: 3 * w(t, 1) * env(t), pitch: -12 * ab(w(t, 1.5)) * env(t) }), '嗯嗯！'),
+  no:     A('act', '摇头不要', 'no', 1.4, 'no',          t => ({ yaw: 24 * w(t, 2.5) * env(t), pitch: -3 * env(t) }), '不要不要'),
+  look:   A('act', '左顾右盼', 'curious', 1.8, 'look',   t => ({ yaw: 30 * w(t, 1.5) * env(t) ** .4, pitch: 4 * w(t, 3) * env(t) }), '看看看'),
+  peek:   A('act', '偷偷看你', 'shy', 1.8, 'peek',       t => ({ yaw: 30 * env(t) ** .6, pitch: -8 * env(t) + 3 * w(t, 3) * env(t) }), '偷偷看你'),
+  dance:  A('act', '摇摆舞', 'dance', 2.0, 'dance',      t => ({ yaw: 26 * w(t, 3) * env(t), pitch: 10 * w(t, 6) * env(t) }), '摇摆摇摆'),
+  think:  A('act', '思考中', 'think', 2.0, 'think',      t => ({ yaw: -18 * env(t) ** .7, pitch: 12 * env(t) ** .7 + 2 * w(t, 3) * env(t) }), '让我想想…'),
+  wink:   A('act', '眨眼调皮', 'wink', 1.4, 'wink',      t => ({ yaw: 8 * w(t, 1) * env(t), pitch: 5 * env(t) }), '嘿嘿'),
+  scared: A('act', '害怕发抖', 'scared', 1.6, 'scared',  t => ({ yaw: 6 * w(t, 9) * env(t) ** .5, pitch: -6 * env(t) }), '好怕怕'),
+  smug:   A('act', '得意', 'wink', 1.5, 'smug',          t => ({ yaw: 14 * env(t), pitch: 10 * env(t) ** .7 }), '哼哼，得意~'),
+  dizzy:  A('act', '转晕了', 'dizzy', 2.0, 'dizzy',      t => ({ yaw: 36 * w(t, 2) * env(t) ** .6, pitch: 6 * w(t, 2, 1.57) * env(t) }), '晕晕晕'),
+  lowbat:   A('sta', '没有电了', 'lowbat', 2.8, 'lowbat',     t => ({ yaw: 8 * w(t, .7) * env(t), pitch: -18 * env(t) ** .6 }), '没有电了…'),
+  charging: A('sta', '充电中', 'charging', 2.6, 'charging',   t => ({ yaw: 6 * w(t, 1) * env(t), pitch: -3 * env(t) + 4 * w(t, 1.5) * env(t) }), '充电中…'),
+  full:     A('sta', '充满电了', 'full', 2.2, 'full',         t => ({ yaw: 22 * w(t, 2) * env(t), pitch: 10 * env(t) + 4 * w(t, 3) * env(t) }), '充满电了！'),
+  boot:     A('sta', '开机啦', 'boot', 1.8, 'boot',           t => ({ yaw: 10 * w(t, 1.5) * env(t), pitch: t < .4 ? -10 * env(t / .4) : 8 * env((t - .4) / .6) }), '开机啦！'),
+  offline:  A('sta', '网络断了', 'offline', 1.8, 'offline',   t => ({ yaw: 12 * w(t, 3) * env(t), pitch: -6 * env(t) }), '网络断了…'),
+  gsend:    A('hid', '拍一拍', 'gsend', 2.4, 'send', t => ({ yaw: 18 * w(t, 2) * env(t), pitch: 8 * env(t) }), '', 'happy'),
+  grecv:    A('hid', '拍了拍你', 'grecv', 2.8, 'recv', t => ({ yaw: 24 * w(t, 2.5) * env(t), pitch: 6 * w(t, 2, 1.2) * env(t) })),
+  chat:     A('hid', '朋友消息', 'chat', 3, 'msg', t => ({ yaw: 0, pitch: 0 })), // 时长与动作在发送消息时动态生成
+};
+
+// DeskFriend prototype — Three.js r160 via CDN (needs network at runtime)
+
+/* ============ 1. CONFIG：所有关键参数集中在这里（单位：场景单位，角度：度） ============ */
+const CFG = {
+  base:   { r: 0.86, h: 0.26 },
+  button: { r: 0.72, h: 0.16, travel: 0.12 },          // 按键行程 = 整体下沉距离
+  body:   { rBottom: 0.62, rTop: 0.45, h: 0.8 },
+  neck:   { yawY: 0.8, pitchY: 1.18 },                  // 相对 upperAssembly：YAW/PITCH 枢轴高度
+  head:   { r: 0.62, zScale: 0.88, centerAbovePitch: 0.3 }, // 头心 = pitchPivot + 0.3
+  screen: { r: 0.46, bezelR: 0.5, res: 240 },           // 1.28" 圆屏，240×240
+  press:  { drop: 0.12, speed: 22 },
+  limits: { yaw: 45, pitch: 20 },
+  servoSpeed: 14, idleToClock: 30, // 无操作多少秒后显示时间
+  longPress: { show: 0.3, full: 2.0 }, // 普通状态下长按 2 秒发送拍一拍；回复窗口内轻拍即可回复
+  // 动作时长/幅度/话术：见 actions.js；音效：见 sound.js
+};
+const REST_Y = CFG.base.h + CFG.button.h; // upperAssembly 静止高度 = 按键顶面
+const rad = THREE.MathUtils.degToRad, clamp = THREE.MathUtils.clamp;
+
+/* ============ 2. 场景与机器人 ============ */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0xdff3f0);
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 50);
+camera.position.set(0, 1.9, 5.3);
+const controls = new OrbitControls(camera, canvas);
+Object.assign(controls, { target: new THREE.Vector3(0, 1.3, 0), enablePan: false, enableDamping: true,
+  minDistance: 3.5, maxDistance: 9, minPolarAngle: 0.5, maxPolarAngle: 1.65 });
+controls.update();
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0xb8d8d2, 1.1); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff4e0, 1.6); sun.position.set(3, 6, 4); sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(6, 48), new THREE.ShadowMaterial({ opacity: 0.18 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+const mat = (c, r = 0.5, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: r, ...extra });
+const M = { cream: mat(0xf6eedd, 0.45), body: mat(0xe9dfca, 0.55), dark: mat(0x1a2a2e, 0.4), base: mat(0x3d5a52, 0.6), coral: mat(0xff7a6b, 0.4) };
+const mesh = (g, m, p = [0, 0, 0]) => { const o = new THREE.Mesh(g, m); o.position.set(...p); o.castShadow = true; return o; };
+
+// 屏幕：240×240 画布纹理 → 圆形几何
+const sc = document.createElement('canvas'); sc.width = sc.height = CFG.screen.res;
+const sctx = sc.getContext('2d', { willReadFrequently: true }); const screenTex = new THREE.CanvasTexture(sc); screenTex.colorSpace = THREE.SRGBColorSpace;
+screenTex.magFilter = THREE.NearestFilter; screenTex.minFilter = THREE.LinearFilter; screenTex.generateMipmaps = false; // 放大时保留真实像素颗粒
+const lcd = document.getElementById('lcd').getContext('2d');
+function lcdOut() { // 模拟 1.28" 圆形 IPS：240×240、RGB565（65K 色），圆外为黑
+  const im = sctx.getImageData(0, 0, 240, 240), d = im.data;
+  for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] / 255, r = d[i] & 248, g = d[i + 1] & 252, b = d[i + 2] & 248;
+    d[i] = (r | r >> 5) * a; d[i + 1] = (g | g >> 6) * a; d[i + 2] = (b | b >> 5) * a; d[i + 3] = 255; }
+  sctx.putImageData(im, 0, 0); lcd.drawImage(sc, 0, 0);
+  // Preview only. The physical LCD runs the same idle face from the firmware;
+  // the page no longer uploads frames to the board.
+}
+
+function buildRobot(skin = null, scr = { tex: screenTex }) {
+  const Mm = skin ? { ...M, cream: mat(skin.head, .45), body: mat(skin.body, .55), base: mat(skin.base, .6), coral: mat(skin.btn, .4) } : M;
+  const base = new THREE.Group(); base.name = 'base';
+  base.add(mesh(new THREE.CylinderGeometry(CFG.base.r, CFG.base.r * 1.06, CFG.base.h, 56), Mm.base, [0, CFG.base.h / 2, 0]));
+  const led = mesh(new THREE.SphereGeometry(0.06, 16, 12), new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0xe6ff4d, emissiveIntensity: 0.4 }), [0, 0.17, CFG.base.r * 1.0]);
+  base.add(led);
+
+  const pressButton = mesh(new THREE.CylinderGeometry(CFG.button.r, CFG.button.r, CFG.button.h, 48), Mm.coral); pressButton.name = 'pressButton';
+  base.add(pressButton);
+
+  const upperAssembly = new THREE.Group(); upperAssembly.name = 'upperAssembly'; base.add(upperAssembly);
+  const body = mesh(new THREE.CylinderGeometry(CFG.body.rTop, CFG.body.rBottom, CFG.body.h, 48), Mm.body, [0, CFG.body.h / 2, 0]); body.name = 'body';
+  upperAssembly.add(body);
+
+  const yawPivot = new THREE.Group(); yawPivot.name = 'yawPivot'; yawPivot.position.y = CFG.neck.yawY; upperAssembly.add(yawPivot);
+  yawPivot.add(mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.2, 24), M.dark, [0, 0.1, 0]));  // 颈部（随 YAW 转）
+  const pitchPivot = new THREE.Group(); pitchPivot.name = 'pitchPivot'; pitchPivot.position.y = CFG.neck.pitchY - CFG.neck.yawY; yawPivot.add(pitchPivot);
+
+  const head = new THREE.Group(); head.name = 'head'; head.position.y = CFG.head.centerAbovePitch; pitchPivot.add(head);
+  const sphere = mesh(new THREE.SphereGeometry(CFG.head.r, 48, 32), Mm.cream); sphere.scale.z = CFG.head.zScale; head.add(sphere);
+  const faceZ = CFG.head.r * CFG.head.zScale * 0.74;
+  const face = mesh(new THREE.CylinderGeometry(CFG.screen.bezelR + 0.03, CFG.screen.bezelR + 0.03, 0.3, 48), M.dark, [0, 0, faceZ]); face.rotation.x = Math.PI / 2; head.add(face);
+  const frontZ = faceZ + 0.15;
+  const circularScreen = new THREE.Mesh(new THREE.CircleGeometry(CFG.screen.r, 64), new THREE.MeshBasicMaterial({ map: scr.tex }));
+  circularScreen.name = 'circularScreen'; circularScreen.position.z = frontZ + 0.004; head.add(circularScreen);
+  const glowMat = new THREE.MeshStandardMaterial({ color: 0x223338, emissive: 0x8fe3d6, emissiveIntensity: 0.3 });
+  const bezel = new THREE.Mesh(new THREE.TorusGeometry(CFG.screen.r + 0.02, 0.022, 12, 64), glowMat); bezel.position.z = frontZ + 0.004; head.add(bezel);
+  scene.add(base);
+  return { mats: Mm, base, pressButton, upperAssembly, yawPivot, pitchPivot, head, circularScreen, glowMat, led, headMeshes: [sphere, face, circularScreen] };
+}
+let R = buildRobot();
+
+/* ============ 5. 状态 ============ */
+const S = { yawT: 0, pitchT: 0, yaw: 0, pitch: 0, press: 0, pressed: false, input: 'IDLE', expr: 'idle', selected: 'wave', anim: null, hop: 0, syncYaw: 0, syncPitch: 0, mode: 'face', pressT: 0, sent: false, lastInput: 0, stickUntil: 0, stickKeep: false, src: '', last: '', page: -1, text: '', age: 0, time: 0, exprTimer: 0, blink: 0, nextBlink: 2 };
+const $ = id => document.getElementById(id);
+function log(m) { const li = document.createElement('li'); li.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false }) + ' ' + m; $('log').prepend(li); while ($('log').children.length > 30) $('log').lastChild.remove(); }
+
+function startAction(id, src) { const a = ACTIONS[id]; S.anim = { id, t: 0 }; S.last = id; S.lastInput = S.time; S.age = 0; S.exprTimer = 0; S.text = ''; S.input = 'PLAY'; sfx.play(a.snd); log(`${src}：${a.name}${a.text ? '（屏幕：' + a.text + '）' : ''}`); }
+const HAPPY = ['wave', 'happy', 'hi', 'off', 'energy', 'thanks', 'cheer', 'dance', 'wink', 'love', 'yes', 'eat']; // 按压后只会出现的“开心”互动
+
+// 侧边控制栏可折叠，主舞台获得更多空间
+$('sideToggle').addEventListener('click', () => {
+  const app = document.querySelector('.app'), collapsed = app.classList.toggle('sidebar-collapsed');
+  $('sideToggle').textContent = collapsed ? '展开控制栏 ›' : '收起控制栏 ‹';
+  $('sideToggle').setAttribute('aria-expanded', String(!collapsed));
+  requestAnimationFrame(() => { if (typeof resize === 'function') resize(); });
+});
+function pressDown(src) { if (S.pressed || LINK.active) return; sfx.init(); sfx.play('press'); S.pressed = true; S.src = src; S.pressT = 0; S.sent = false; S._hs = -1; S.input = 'PRESSED'; log(REPLY?.active ? `${src}：轻拍回复窗口中` : `${src}：按压中（长按 2 秒拍一拍）`); }
+function pickRandom() { const pool = HAPPY.filter(k => k !== S.last); return pool[Math.floor(Math.random() * pool.length)]; }
+function pressUp() {
+  if (!S.pressed) return;
+  const wasReply = REPLY?.active, wasLong = S.pressT >= CFG.longPress.full;
+  S.pressed = false; HOLD.p = 0; sfx.play('release');
+  if (wasReply) {
+    if (!wasLong) sendReplyPoke();
+    else log('回复窗口内请轻拍；倒计时结束后需长按发送拍一拍');
+    return;
+  }
+  const rnd = S.src === '点击头部' || !HAPPY.includes(S.selected); startAction(rnd ? pickRandom() : S.selected, rnd ? '轻按·开心互动' : '轻按·本机互动');
+}
+const CHAT_MAX = 60;
+function sendChat(text) { // 朋友消息：清洗 → 超长截断 → 自动分页 → 播放
+  let t = Array.from((text || '').replace(/\s+/g, ' ').trim()); if (!t.length) { log('消息为空，先写点什么吧'); return; }
+  const cut = t.length > CHAT_MAX; if (cut) t = t.slice(0, CHAT_MAX - 1).concat('…');
+  const nm = Array.from($('chatName').value.trim() || '朋友').slice(0, 6).join(''), dur = layoutChat(sctx, t.join(''), nm), n = CHAT.pages.length;
+  Object.assign(ACTIONS.chat, { dur, f: tt => { const e = Math.sin(Math.PI * tt); return { yaw: 9 * Math.sin(tt * n * 7 + .8) * e, pitch: -5 * e + 4 * Math.sin(tt * n * 5) * e }; } });
+  sfx.init(); startAction('chat', `${nm}：${t.join('')}`); if (cut) log(`太长啦，已截断到 ${CHAT_MAX} 字`); if (n > 1) log(`内容较长，分 ${n} 页展示`);
+}
+
+/* ============ 6. 输入处理 ============ */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let headDrag = false;
+canvas.addEventListener('pointerdown', e => {
+  const r = canvas.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  if (ray.intersectObjects(R.headMeshes).length) { headDrag = true; controls.enabled = false; pressDown('点击头部'); }
+});
+window.addEventListener('pointerup', () => { headDrag = false; $('press').classList.remove('down'); if (S.pressed) pressUp(); });
+window.addEventListener('pointercancel', () => { headDrag = false; controls.enabled = true; pressUp(); });
+$('press').addEventListener('pointerdown', e => { e.preventDefault(); $('press').classList.add('down'); pressDown('PRESS 按钮'); });
+window.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) { e.preventDefault(); pressDown(e.code); } });
+window.addEventListener('keyup', e => { if (e.target.tagName === 'INPUT') return; if (e.code === 'Space' || e.code === 'Enter') pressUp(); });
+$('yaw').addEventListener('input', e => { S.yawT = +e.target.value; $('yawOut').textContent = S.yawT + '°'; });
+$('pitch').addEventListener('input', e => { S.pitchT = +e.target.value; $('pitchOut').textContent = S.pitchT + '°'; });
+$('center').addEventListener('click', () => { $('yaw').value = $('pitch').value = 0; S.yawT = S.pitchT = 0; $('yawOut').textContent = $('pitchOut').textContent = '0°'; S.anim = null; S.expr = 'idle'; S.text = ''; log('回中'); });
+function setMode(m) { S.mode = m; $('stickBtn').classList.toggle('active', S.stickKeep && m === 'stick'); }
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14', CAM = { on: false, lm: null, stream: null, t: -1, seen: 0, msg: '' };
+function camMsg(m) { if (CAM.msg !== m) { CAM.msg = m; $('camState').textContent = m; } }
+async function startCam() {
+  $('camBtn').disabled = true; camMsg('申请摄像头…');
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' }, audio: false });
+    const v = $('cam'); v.srcObject = CAM.stream; await v.play(); v.hidden = false; camMsg('加载姿态模型中（需联网，首次几秒）…');
+    const { PoseLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs'), fs = await FilesetResolver.forVisionTasks(MP + '/wasm');
+    const opt = d => ({ baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate: d }, runningMode: 'VIDEO', numPoses: 1 });
+    try { CAM.lm = await PoseLandmarker.createFromOptions(fs, opt('GPU')); } catch { CAM.lm = await PoseLandmarker.createFromOptions(fs, opt('CPU')); }
+    CAM.on = true; CAM.seen = S.time; setMode('stick'); $('camBtn').textContent = '关闭摄像头同步'; camMsg('同步中：对着摄像头动一动'); log('摄像头同步已开启（画面只在本机处理，不上传）');
+  } catch (e) { stopCam(); camMsg('启动失败：' + (e.message || e.name || e) + '。可先用上面的动画演示'); log('摄像头同步失败'); }
+  $('camBtn').disabled = false;
+}
+function stopCam() { CAM.on = false; CAM.stream?.getTracks().forEach(t => t.stop()); CAM.stream = null; try { CAM.lm?.close(); } catch {} CAM.lm = null; STICK.j = STICK.prev = null; S.syncYaw = S.syncPitch = 0; $('cam').hidden = true; $('camBtn').textContent = '开启摄像头同步'; camMsg('未开启'); }
+function camStep() { // 每帧：取最新视频帧 → 姿态 → 火柴人关节；头部左右/上下同步到机器人云台
+  if (!CAM.on) return; const v = $('cam');
+  if (v.readyState >= 2 && v.currentTime !== CAM.t) { CAM.t = v.currentTime; const l = CAM.lm.detectForVideo(v, performance.now()).landmarks[0];
+    if (l) { STICK.j = landmarksToJoints(l, v.videoWidth, v.videoHeight); CAM.seen = S.time; camMsg('同步中：对着摄像头动一动');
+      S.syncYaw = clamp((.5 - l[0].x) * 90, -30, 30); S.syncPitch = clamp((.45 - l[0].y) * 50, -10, 10); }
+    else if (S.time - CAM.seen > 1) { STICK.j = STICK.prev = null; S.syncYaw = S.syncPitch = 0; camMsg('没看到人，站远一点试试'); } }
+}
+function chip(parent, text, fn) { const b = document.createElement('button'); b.textContent = text; b.onclick = fn; parent.append(b); return b; }
+function buildButtons() {
+  for (const [k, n] of Object.entries(EXPR_NAMES)) chip($('exprs'), n, () => { sfx.init(); sfx.play('blip'); setMode('face'); S.expr = k; S.text = ''; S.exprTimer = 6; log('表情：' + n); }).dataset.k = k;
+  chip($('acts'), '🎲 随机', () => { sfx.init(); S.selected = 'random'; syncActive(); startAction(pickRandom(), '随机预览'); }).dataset.k = 'random';
+  for (const [k, a] of Object.entries(ACTIONS)) { const box = $({ act: 'acts', phr: 'phr', sta: 'sta' }[a.group]); if (box) chip(box, a.name, () => { sfx.init(); S.selected = k; syncActive(); startAction(k, '预览'); }).dataset.k = k; }
+  syncActive();
+  $('snd').onclick = () => { sfx.init(); const on = $('snd').dataset.on !== '1'; $('snd').dataset.on = on ? '1' : '0'; $('snd').textContent = '音效：' + (on ? '开' : '关'); sfx.setOn(on); if (on) sfx.play('blip'); };
+  $('vol').oninput = e => sfx.setVol(+e.target.value);
+  $('chatText').oninput = e => { const n = Array.from(e.target.value).length; $('chatCnt').textContent = `${n}/${CHAT_MAX}`; $('chatCnt').style.color = n > CHAT_MAX ? '#d33' : ''; };
+  $('chatSend').onclick = () => sendChat($('chatText').value);
+  $('chatText').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendChat(e.target.value); } };
+  ['收到，谢谢！', '到饭点啦，一起吃饭？', '会议五分钟后开始', '路上注意安全', '晚上见'].forEach(t => chip($('chips'), t, () => { $('chatText').value = t; $('chatText').dispatchEvent(new Event('input')); sendChat(t); }));
+  $('stickBtn').onclick = () => { sfx.init(); sfx.play('blip'); S.stickKeep = !S.stickKeep; S.stickUntil = 0; $('stickBtn').textContent = '常驻火柴人：' + (S.stickKeep ? '开' : '关'); setMode(S.stickKeep ? 'stick' : 'face'); };
+  for (const [k, v] of Object.entries(STICKERS)) chip($('sanims'), v.n, () => { if (CAM.on) stopCam(); STICK.anim = k; S.age = 0; setMode('stick'); S.stickUntil = S.stickKeep ? 0 : S.time + 5; sfx.play('blip'); log('表情包：' + v.n); });
+  $('camBtn').onclick = () => { sfx.init(); CAM.on ? stopCam() : startCam(); };
+  ['pointerdown', 'keydown', 'input'].forEach(ev => addEventListener(ev, () => { S.lastInput = S.time; }, true)); // 任何操作都会唤醒表情
+  $('idleSec').oninput = e => { CFG.idleToClock = +e.target.value; $('idleOut').textContent = e.target.value + ' 秒'; };
+  $('clockNow').onclick = () => { S.anim = null; S.exprTimer = 0; S.expr = 'idle'; S.stickKeep = false; setMode('face'); S.lastInput = S.time - CFG.idleToClock - 1; log('立即显示时间'); };
+  $('greetNow').onclick = () => triggerGreeting('试发');
+  $('lcdZoom').onclick = () => { const z = $('lcd').classList.toggle('z2'); $('lcdZoom').textContent = z ? '缩小 1×' : '放大 2×'; };
+  $('lcdSave').onclick = () => sc.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'deskfriend-240x240.png'; a.click(); });
+}
+function syncActive() { for (const b of [...$('acts').children, ...$('phr').children, ...$('sta').children]) b.classList.toggle('active', b.dataset.k === S.selected); }
+
+/* ============ 6b. 打招呼：当前控制机器人长按 2 秒发送 → 另一台机器人短暂接收反馈 → 控制焦点切换 ============ */
+const SKINS = [ // 朋友机器人的外壳皮肤（按名字自动选一种）
+  { head: 0xcfe6ff, body: 0xb4d2f2, base: 0x39496b, btn: 0xffd35e }, { head: 0xffd9cc, body: 0xf2c0b0, base: 0x6b4a47, btn: 0x8fe3d6 },
+  { head: 0xd2f4e4, body: 0xb6e3cf, base: 0x2f5d57, btn: 0xff7a6b }, { head: 0xe3d9ff, body: 0xcbbdf2, base: 0x4a416b, btn: 0xe6ff4d } ];
+function makeScreen() { const c = document.createElement('canvas'); c.width = c.height = CFG.screen.res; const g = c.getContext('2d', { willReadFrequently: true });
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false; return { c, g, tex }; }
+function q565(g) { const im = g.getImageData(0, 0, 240, 240), d = im.data; for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] / 255, r = d[i] & 248, gg = d[i + 1] & 252, b = d[i + 2] & 248; d[i] = (r | r >> 5) * a; d[i + 1] = (gg | gg >> 6) * a; d[i + 2] = (b | b >> 5) * a; d[i + 3] = 255; } g.putImageData(im, 0, 0); }
+const SCB = makeScreen(); let RB = buildRobot(SKINS[0], SCB); const ROBOT_A = R, ROBOT_DEER = RB; const BX = 8.2;
+RB.base.position.x = BX; RB.base.rotation.y = -.45; RB.base.visible = false; RB.base.scale.setScalar(.0001);
+const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.35, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+const label = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false })); label.scale.set(1.4, .35, 1); label.position.set(BX, 3.05, 0); label.visible = false; label.renderOrder = 5; scene.add(label);
+const orb = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xe6ff4d, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); orb.visible = false; orb.renderOrder = 4;
+const orbLight = new THREE.PointLight(0xe6ff4d, 0, 8); scene.add(orb, orbLight);
+const NP = 160, pPos = new Float32Array(NP * 3), pCol = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP), COLS = [0xe6ff4d, 0x8fe3d6, 0xff7a6b, 0xffffff].map(c => new THREE.Color(c)), pCol0 = new Array(NP).fill(COLS[0]);
+const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3)); pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+const pts = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: .24, map: glowTex, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); pts.frustumCulled = false; scene.add(pts);
+let pIdx = 0;
+function spawn(p, n, spd, up = 0) { for (let i = 0; i < n; i++) { const k = pIdx++ % NP, a = Math.random() * 6.283, e = (Math.random() - .3) * 1.2, s = spd * (.4 + Math.random() * .8);
+  pPos[k * 3] = p.x; pPos[k * 3 + 1] = p.y; pPos[k * 3 + 2] = p.z; pVel[k * 3] = Math.cos(a) * Math.cos(e) * s; pVel[k * 3 + 1] = Math.sin(e) * s + up; pVel[k * 3 + 2] = Math.sin(a) * Math.cos(e) * s; pLife[k] = 1; pCol0[k] = COLS[(Math.random() * 4) | 0]; } }
+function stepParticles(dt) { for (let k = 0; k < NP; k++) { const i = k * 3; if (pLife[k] <= 0) { pCol[i] = pCol[i + 1] = pCol[i + 2] = 0; continue; }
+  pLife[k] -= dt * 1.1; pVel[i + 1] -= 1.4 * dt; pPos[i] += pVel[i] * dt; pPos[i + 1] = Math.max(.03, pPos[i + 1] + pVel[i + 1] * dt); pPos[i + 2] += pVel[i + 2] * dt;
+  const f = Math.max(0, pLife[k]); pCol[i] = pCol0[k].r * f; pCol[i + 1] = pCol0[k].g * f; pCol[i + 2] = pCol0[k].b * f; } pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true; }
+const RIP = []; for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(new THREE.RingGeometry(.9, 1, 96), new THREE.MeshBasicMaterial({ color: 0xe6ff4d, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending }));
+  m.rotation.x = -Math.PI / 2; m.position.y = .03; m.visible = false; scene.add(m); RIP.push({ m, act: false, t: 0, x: 0, col: 0, maxR: 7 }); }
+function ripple(x, delay = 0, col = 0xe6ff4d, maxR = 7.5) { const r = RIP.find(q => !q.act); if (r) Object.assign(r, { act: true, t: -delay, x, col, maxR }); } // 地面光波
+const ENV = { k: 0, dim: 0 }, BG0 = new THREE.Color(0xdff3f0), BG1 = new THREE.Color(0x213c3f);
+const envPulse = v => { ENV.k = Math.max(ENV.k, v); };
+let ACTIVE_B = false, deerConfigured = false;
+const LINK = { active: false, kind: 'initial', t: 0, done: {}, keys: [], senderName: '', targetName: '' };
+const REPLY = { active: false, duration: 10, remaining: 0, motion: 0, senderName: '', targetName: '', kind: 'initial' };
+const Bs = { face: 'idle', t0: 0, yaw: 0, pitch: 0, pv: 0, hold: 0 };
+function robotTitle(robot) { return robot === ROBOT_DEER ? friendName() : '小明'; }
+function recipientTitle() { return robotTitle(RB); }
+const V = (x, y, z) => new THREE.Vector3(x, y, z), sm = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); }, easeBack = x => 1 + 2.70158 * (x - 1) ** 3 + 1.70158 * (x - 1) ** 2;
+const headPos = x => V(x, 2.0, .4), once = (k, tm, fn) => { if (LINK.t >= tm && !LINK.done[k]) { LINK.done[k] = 1; fn(); } };
+function friendName() { return '小鹿'; }
+function setLabel(name) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d'); g.fillStyle = 'rgba(20,35,38,.78)'; g.beginPath(); g.arc(32, 32, 24, Math.PI / 2, Math.PI * 1.5); g.arc(224, 32, 24, -Math.PI / 2, Math.PI / 2); g.fill();
+  g.fillStyle = '#fff'; g.font = 'bold 26px "PingFang SC","Microsoft YaHei",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(name, 128, 33);
+  if (label.material.map) label.material.map.dispose(); label.material.map = new THREE.CanvasTexture(c); label.material.map.colorSpace = THREE.SRGBColorSpace; label.material.needsUpdate = true;
+}
+function setFriend(name) {
+  // 第二台机器人固定叫“小鹿”；第一台机器人固定叫“小明”。
+  const sk = SKINS[Array.from(name).reduce((a, c) => a + c.codePointAt(0), 0) % SKINS.length], m = ROBOT_DEER.mats;
+  m.cream.color.setHex(sk.head); m.body.color.setHex(sk.body); m.base.color.setHex(sk.base); m.coral.color.setHex(sk.btn);
+  setLabel(name);
+  deerConfigured = true;
+}
+function moveOrb(u, x0, x1) { const e = sm(u), a = headPos(x0), c = headPos((x0 + x1) / 2).add(V(0, 1.7, .8)), b = headPos(x1); // 光球沿弧线从一个机器人飞向另一个
+  orb.position.copy(a).multiplyScalar((1 - e) ** 2).addScaledVector(c, 2 * (1 - e) * e).addScaledVector(b, e * e);
+  orb.visible = true; orb.scale.setScalar(.8 + .25 * Math.sin(S.time * 18)); orbLight.position.copy(orb.position); orbLight.intensity = 14; spawn(orb.position, 3, .7); }
+function bindRobotScreens() {
+  R.circularScreen.material.map = screenTex; R.circularScreen.material.needsUpdate = true;
+  RB.circularScreen.material.map = SCB.tex; RB.circularScreen.material.needsUpdate = true;
+}
+function swapFocus() {
+  const previousMain = R; R = RB; RB = previousMain; ACTIVE_B = !ACTIVE_B; bindRobotScreens();
+}
+const FOCUS = { active: false, t: 0, dur: .45, fromP: new THREE.Vector3(), fromT: new THREE.Vector3(), toP: new THREE.Vector3(), toT: new THREE.Vector3() };
+function focusRobot(robot, smooth = true) {
+  const focus = V(robot.base.position.x, 1.3, 0), targetPos = focus.clone().add(V(-2.1, .8, 5.2));
+  if (!smooth) { camera.position.copy(targetPos); controls.target.copy(focus); FOCUS.active = false; return; }
+  FOCUS.fromP.copy(camera.position); FOCUS.fromT.copy(controls.target); FOCUS.toP.copy(targetPos); FOCUS.toT.copy(focus); FOCUS.t = 0; FOCUS.active = true;
+}
+function stepFocus(dt) {
+  if (!FOCUS.active) return;
+  FOCUS.t += dt; const u = sm(FOCUS.t / FOCUS.dur); camera.position.lerpVectors(FOCUS.fromP, FOCUS.toP, u); controls.target.lerpVectors(FOCUS.fromT, FOCUS.toT, u);
+  if (FOCUS.t >= FOCUS.dur) FOCUS.active = false;
+}
+function clearReplyHint(text = '轻按 = 本机开心互动') {
+  $('replyHint').textContent = text;
+}
+function finishReplyWindow(reason = '轻拍回复倒计时结束，请长按发送拍一拍', hint = '回复超时 · 长按 2 秒发送拍一拍') {
+  REPLY.active = false; REPLY.remaining = 0; REPLY.motion = 0; S.pressed = false; S.sent = false; S.anim = null; S.expr = 'idle'; S.text = ''; S.input = 'IDLE'; HOLD.p = 0; $('press').classList.remove('down'); clearReplyHint(hint);
+  S.lastInput = S.time; log(reason);
+}
+function beginReplyWindow() {
+  REPLY.active = true; REPLY.duration = LINK.kind === 'reply' ? 5 : 10; REPLY.remaining = REPLY.duration; REPLY.motion = 0;
+  REPLY.senderName = LINK.senderName; REPLY.targetName = LINK.targetName; REPLY.kind = LINK.kind;
+  swapFocus(); focusRobot(R); LINK.active = false; label.visible = false; S.pressed = false; S.sent = false; S.anim = null; S.expr = 'idle'; S.text = ''; S.input = 'IDLE'; HOLD.p = 0; $('press').classList.remove('down');
+  GREET.cap = REPLY.kind === 'reply' ? '对方也拍了拍你' : `${REPLY.senderName}拍了拍你`; GREET.progress = 1; S.lastInput = S.time;
+  $('replyHint').textContent = GREET.cap + ' · 轻拍回复 · ' + REPLY.duration + ' 秒'; log(`${REPLY.senderName}拍了拍你，${REPLY.duration} 秒内轻拍回复`);
+}
+function sendReplyPoke() {
+  if (!REPLY.active) return;
+  const from = REPLY.targetName, to = REPLY.senderName; finishReplyWindow(`${from}的轻拍回复已发出`, '回传中 · 对方将显示“对方也拍了拍你”'); triggerGreeting('轻拍回复', 'reply', from, to);
+}
+function triggerGreeting(src, kind = 'initial', senderName = robotTitle(R), targetName = recipientTitle()) {
+  if (LINK.active || REPLY.active) return; sfx.init(); const name = friendName(); if (!deerConfigured) setFriend(name);
+  setLabel(targetName);
+  GREET.cap = kind === 'reply' ? `${senderName}回复轻拍` : `${senderName}拍了拍${targetName}`;
+  S.pressed = false; S.sent = true; S.input = 'SEND'; HOLD.p = 0; $('press').classList.remove('down');
+  const cam0 = { p: camera.position.clone(), t: controls.target.clone() }, kk = camera.aspect < .9 ? 1.6 : 1;
+  const fromX = R.base.position.x, toX = RB.base.position.x, target = V(toX, 1.3, 0);
+  const wide = { p: V((fromX + toX) / 2 + .4, 3.0, 13.8 * kk), t: V((fromX + toX) / 2, 1.3, 0) };
+  const closeTarget = { p: target.clone().add(V(-2.1, .8, 5.2)), t: target };
+  Object.assign(LINK, { active: true, kind, senderName, targetName, fromX, toX, t: 0, done: {}, keys: [[0, cam0], [.7, wide], [1.8, wide], [2.9, closeTarget], [5.1, closeTarget], [5.8, closeTarget], [99, closeTarget]] });
+  Object.assign(Bs, { face: 'boot', t0: 0, yaw: 0, pitch: 0, pv: 0, hold: 0 }); RB.base.visible = true; label.visible = true;
+  startAction('gsend', src); sfx.play('send'); log(`${src}：${senderName}拍了拍${targetName} → 光信号传递中`);
+}
+function camAt(t) { const k = LINK.keys; let i = 0; while (i < k.length - 2 && t >= k[i + 1][0]) i++; const [t0, a] = k[i], [t1, b] = k[i + 1], u = sm((t - t0) / (t1 - t0)); camera.position.lerpVectors(a.p, b.p, u); controls.target.lerpVectors(a.t, b.t, u); }
+function linkStep(dt) {
+  const L = LINK, k = 1 - Math.exp(-dt * CFG.servoSpeed);
+  ENV.dim += ((L.active && L.t > .2 && L.t < 9.3 ? 1 : 0) - ENV.dim) * (1 - Math.exp(-dt * 3)); ENV.k *= Math.exp(-dt * 2.4); // 全场调暗，让光效更突出
+  scene.background.copy(BG0).lerp(BG1, ENV.dim * .8); hemi.intensity = 1.1 - .65 * ENV.dim; sun.intensity = 1.6 - 1.0 * ENV.dim;
+  for (const r of RIP) if (r.act) { r.t += dt; const u = r.t / 1.9; if (u >= 1) { r.act = false; r.m.visible = false; } else if (r.t >= 0) { const s = .3 + u * r.maxR; r.m.scale.set(s, s, 1); r.m.position.x = r.x; r.m.material.opacity = .8 * (1 - u) ** 2; r.m.material.color.setHex(r.col); r.m.visible = true; } }
+  stepParticles(dt);
+  if (!L.active) { orb.visible = false; orbLight.intensity = 0; return; }
+  L.t += dt; const t = L.t, bHead = headPos(L.toX); camAt(t);
+  once('pop', .15, () => { spawn(V(L.toX, 1.2, .3), 40, 2, .5); sfx.play('blip'); });
+  once('r1', .25, () => { for (let i = 0; i < 4; i++) ripple(L.fromX, i * .18); spawn(headPos(L.fromX), 46, 2.8, 1); envPulse(1.35); sfx.play('cheer'); });
+  if (t > .5 && t < 2.4) moveOrb((t - .5) / 1.9, L.fromX, L.toX);
+  once('arrB', 2.4, () => {
+    orb.visible = false; orbLight.intensity = 0; ripple(L.toX, 0, 0xffd35e); ripple(L.toX, .25, 0x8fe3d6); ripple(L.toX, .5, 0xff7a6b); spawn(bHead, 60, 2.6, 1); envPulse(1.3); sfx.play('recv');
+    beginReplyWindow();
+  });
+  if (!L.active) return;
+  const wv = (a, b, f, amp) => (t > a && t < b) ? amp * Math.sin((t - a) * f) * Math.sin(Math.PI * (t - a) / (b - a)) : 0; // 朋友机器人的点头 / 摆头
+  const ty = wv(2.4, 4.0, 9, 22) + 3 * Math.sin(S.time * .8), tp = wv(2.4, 3.6, 5, 6);
+  Bs.yaw += (ty - Bs.yaw) * k; Bs.pitch += (tp - Bs.pitch) * k; Bs.pv += ((t > 3.0 && t < 4.1 ? 1 : 0) - Bs.pv) * (1 - Math.exp(-dt * CFG.press.speed));
+  const sc = t < .15 ? 0 : t < 8.4 ? easeBack(clamp((t - .15) / .7, 0, 1)) : 1 - sm((t - 8.4) / .7);
+  RB.base.scale.setScalar(Math.max(.0001, sc)); label.material.opacity = clamp(sc, 0, 1); label.position.x = RB.base.position.x; label.position.y = 3.05 + .05 * Math.sin(S.time * 3);
+  RB.yawPivot.rotation.y = rad(Bs.yaw); RB.pitchPivot.rotation.x = -rad(Bs.pitch);
+  RB.upperAssembly.position.y = REST_Y - Bs.pv * CFG.press.drop; RB.pressButton.position.y = CFG.base.h + CFG.button.h / 2 - Bs.pv * CFG.press.drop;
+  RB.glowMat.emissive.setHex(GLOW[Bs.face] ?? 0x8fe3d6); RB.glowMat.emissiveIntensity = .5 + ENV.k * 1.5 + Bs.hold * 1.2;
+  GREET.cap = L.kind === 'reply' ? '对方也拍了拍你' : `${L.senderName}拍了拍你`; const hp = HOLD.p; HOLD.p = Bs.hold; // 朋友机器人的屏幕（同样 240×240 / RGB565）
+  drawScreen(SCB.g, Bs.face === 'boot' && t - Bs.t0 > 1.2 ? 'idle' : Bs.face, '', S.time, t - Bs.t0, S.blink > 0); HOLD.p = hp; q565(SCB.g); SCB.tex.needsUpdate = true;
+}
+
+/* ============ 7. 主循环 + UI 更新 ============ */
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect(); renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width / r.height; camera.fov = camera.aspect < 0.9 ? 62 : 38; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); new ResizeObserver(resize).observe(canvas.parentElement);
+
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  S.time += dt; S.age += dt;
+  controls.enabled = !headDrag && !LINK.active;
+  if (S.pressed) { S.pressT += dt; const LP = CFG.longPress; HOLD.p = clamp((S.pressT - LP.show) / (LP.full - LP.show), 0, 1); // 长按：进度环 + 递进的“滴”声
+    if (S.pressT > LP.show && S._hs !== Math.floor(HOLD.p * 8)) { S._hs = Math.floor(HOLD.p * 8); sfx.play('tick', 1 + HOLD.p * .9); }
+    if (S.pressT >= LP.full && !S.sent && !REPLY.active) triggerGreeting('长按 2 秒'); } else HOLD.p = 0;
+  if (REPLY.active) {
+    REPLY.remaining = Math.max(0, REPLY.remaining - dt); GREET.remaining = REPLY.remaining; GREET.progress = REPLY.remaining / REPLY.duration;
+    $('replyHint').textContent = `${REPLY.kind === 'reply' ? '对方也拍了拍你' : REPLY.senderName + '拍了拍你'} · 轻拍回复 · ${Math.ceil(REPLY.remaining)} 秒`;
+    if (REPLY.remaining <= 0) finishReplyWindow();
+  }
+  const off = { yaw: 1.6 * Math.sin(S.time * .7), pitch: 1.1 * Math.sin(S.time * 1.1 + 1), hop: 0 }; // 待机呼吸感
+  if (REPLY.active) {
+    REPLY.motion = (REPLY.motion + dt / ACTIONS.off.dur) % 1;
+    const replyPose = ACTIONS.off.f(REPLY.motion); // 收到消息时复用“该下班了”的摇摆动作
+    off.yaw += replyPose.yaw; off.pitch += replyPose.pitch;
+  }
+  if (S._clock) off.yaw += 6 * Math.sin(S.time * .4) * Math.max(0, Math.sin(S.time * .15)); // 看时间界面时偶尔东张西望
+  if (S.anim) { const a = ACTIONS[S.anim.id]; S.anim.t += dt / a.dur; const o = a.f(Math.min(S.anim.t, 1)); off.yaw += o.yaw; off.pitch += o.pitch;
+    if (S.anim.t >= 1) { S.expr = a.after || a.face; S.text = a.after ? '' : a.text; S.exprTimer = S.expr === 'idle' ? 0 : 1.4; S.lastInput = S.time; S.anim = null; if (!S.pressed) S.input = 'IDLE'; log('动作完成'); } }
+  off.yaw += S.syncYaw; off.pitch += S.syncPitch; camStep();
+  const k = 1 - Math.exp(-dt * CFG.servoSpeed);
+  S.yaw += (clamp(S.yawT + off.yaw, -CFG.limits.yaw, CFG.limits.yaw) - S.yaw) * k;
+  S.pitch += (clamp(S.pitchT + off.pitch, -CFG.limits.pitch, CFG.limits.pitch) - S.pitch) * k;
+  S.press += ((S.pressed ? 1 : 0) - S.press) * (1 - Math.exp(-dt * CFG.press.speed));
+  if (S.exprTimer > 0 && (S.exprTimer -= dt) <= 0) { S.expr = 'idle'; S.text = ''; }
+
+  // 机械：整个 upperAssembly 一起下沉；按键同步压缩；base 固定
+  R.upperAssembly.position.y = REST_Y - S.press * CFG.press.drop;
+  R.pressButton.position.y = CFG.base.h + CFG.button.h / 2 - S.press * CFG.press.drop;
+  R.yawPivot.rotation.y = rad(S.yaw);
+  R.pitchPivot.rotation.x = -rad(S.pitch); // 正值 = 抬头
+  linkStep(dt);
+  stepFocus(dt);
+
+  const cur = S.anim && ACTIONS[S.anim.id];
+  if (S.mode === 'stick' && S.stickUntil && S.time > S.stickUntil && !CAM.on) { S.stickUntil = 0; setMode('face'); S.lastInput = S.time; }
+  const calm = !S.pressed && !cur && S.exprTimer <= 0 && S.expr === 'idle' && S.mode === 'face';
+  const localFaceActive = S.localFaceEnd > S.time;
+  const shown = localFaceActive ? 'dizzy' : S.pressed ? 'pressed' : cur ? cur.face : (S.mode === 'stick' && S.exprTimer <= 0 ? 'stick' : calm && S.time - S.lastInput > CFG.idleToClock ? 'clock' : S.expr);
+  const faceAge = localFaceActive ? S.time - S.localFaceStart : S.age;
+  S._clock = shown === 'clock'; const text = (localFaceActive || S.pressed || shown === 'stick' || shown === 'clock') ? '' : cur ? cur.text : S.text;
+  S.nextBlink -= dt; if (S.nextBlink < 0) { S.blink = 0.12; S.nextBlink = 2 + Math.random() * 3; } S.blink = Math.max(0, S.blink - dt);
+  const replyShown = localFaceActive ? 'dizzy' : REPLY.active ? 'replyWait' : shown;
+  if (REPLY.active) GREET.cap = REPLY.kind === 'reply' ? '对方也拍了拍你' : `${REPLY.senderName}拍了拍你`;
+  else GREET.cap = shown === 'gsend' ? `${robotTitle(R)}拍了拍${recipientTitle()}` : (shown === 'grecv' ? `${robotTitle(RB)}拍了拍你` : (shown === 'replyDone' ? '对方也拍了拍你' : ''));
+  drawScreen(sctx, replyShown, REPLY.active ? '' : text, S.time, faceAge, S.blink > 0); lcdOut(); screenTex.needsUpdate = true;
+  // 同步到板子：只发表情名、字幕和时钟（几百字节），像素仍由 ESP32 自己画
+  { const greetFace = replyShown === 'gsend' || replyShown === 'grecv' || replyShown === 'replyWait' || replyShown === 'replyDone';
+    const d = new Date();
+    deviceMonitor.pushFace({ face: replyShown, text: greetFace ? GREET.cap : (REPLY.active ? '' : text), time: S.time, age: faceAge, blink: S.blink > 0, blinkRemaining: S.blink,
+      hold: greetFace ? replyShown === 'replyWait' : HOLD.p > 0, holdProgress: greetFace ? (GREET.progress || 0) : HOLD.p,
+      ch: d.getHours(), cm: d.getMinutes(), cs: d.getSeconds(), cw: d.getDay(), cmo: d.getMonth() + 1, cd: d.getDate(),
+      csec: d.getSeconds() + d.getMilliseconds() / 1000,
+      wallClockMs: d.getTime(), utcOffsetMinutes: -d.getTimezoneOffset(),
+      holdRate: replyShown === 'replyWait' ? -1 / REPLY.duration : S.pressed && HOLD.p > 0 && HOLD.p < 1 ? 1 / (CFG.longPress.full - CFG.longPress.show) : 0,
+      ...(replyShown === 'chat' ? {chat: {name: CHAT.name, pages: CHAT.pages, starts: CHAT.starts}} : {}),
+      ...(replyShown === 'stick' ? {stick: {anim: STICK.anim, camera: !!STICK.j,
+        ...(STICK.j ? {joints: ['head','neck','sL','sR','hip','eL','eR','hL','hR','kL','kR','fL','fR'].map(k => STICK.j[k].map(n => Math.round(n * 1000) / 1000)), eyes: STICK.j.e || 'open', mouth: STICK.j.m || 'smile'} : {})}} : {}) }); }
+  if (cur === ACTIONS.chat) { const p = chatPage(S.age); if (p !== S.page) { S.page = p; if (p > 0) sfx.play('blip'); } } else S.page = -1;
+  R.glowMat.emissive.setHex(GLOW[replyShown] ?? GLOW[shown]); R.glowMat.emissiveIntensity = 0.3 + 1.3 * S.press + (S.anim ? 0.4 : 0) + 1.2 * HOLD.p + ENV.k * 1.5;
+  R.led.material.emissiveIntensity = 0.4 + 2 * S.press;
+
+  const pr = S.pressed;
+  $('chip').textContent = LINK.active ? '拍一拍传递中' : REPLY.active ? `${REPLY.kind === 'reply' ? '对方也拍了拍你' : REPLY.senderName + '拍了拍你'} · ${Math.ceil(REPLY.remaining)}s` : pr ? (HOLD.p > 0 ? '长按中 ' + Math.round(HOLD.p * 100) + '%' : '按压中') : cur ? cur.name : shown === 'clock' ? '待机 · 时间' : shown === 'stick' ? (CAM.on ? '火柴人 · 同步中' : '像素火柴人') : (text || EXPR_NAMES[S.expr] || '待机'); $('chip').classList.toggle('on', pr || REPLY.active);
+  $('pressState').textContent = '按压状态：' + (pr ? '按压中' : '未按下'); $('pressState').classList.toggle('on', pr);
+  $('rYaw').textContent = S.yaw.toFixed(1); $('rPitch').textContent = S.pitch.toFixed(1); $('rIn').textContent = S.input;
+  for (const b of $('exprs').children) b.classList.toggle('active', b.dataset.k === shown);
+
+  controls.update(); renderer.render(scene, camera); requestAnimationFrame(frame);
+}
+buildButtons(); resize(); log('DeskFriend 就绪');
+window.deskFriend = { ACTIONS, S, R, CFG, pressDown, pressUp, startAction }; // 便于自动化验证
+deviceMonitor.onLocalFace = event => {
+  S.localFaceStart = S.time - (3 - event.remaining_ms / 1000);
+  S.localFaceEnd = S.time + event.remaining_ms / 1000;
+  S.lastInput = S.time; S.text = ''; S.expr = 'idle'; S.anim = null; S.pressed = false; HOLD.p = 0;
+};
+// Deterministic reference used by scripts/verify_face_sync.mjs. No network frames.
+window.deskFaceTest = {
+  draw(state) {
+    Object.assign(GREET, {cap: state.text || '', progress: state.holdProgress || 0});
+    HOLD.p = state.hold ? state.holdProgress : 0;
+    if(state.chat) Object.assign(CHAT, state.chat);
+    STICK.anim = state.stick?.anim || 'idle'; STICK.j = null;
+    if(state.stick?.camera) {STICK.j = Object.fromEntries(['head','neck','sL','sR','hip','eL','eR','hL','hR','kL','kR','fL','fR'].map((k,i) => [k, state.stick.joints[i]])); STICK.j.e=state.stick.eyes; STICK.j.m=state.stick.mouth;}
+    const RealDate = window.Date;
+    if(state.wallClockMs) window.Date = class extends RealDate {constructor(...args){super(...(args.length ? args : [state.wallClockMs]));}};
+    try {drawScreen(sctx,state.face,state.text||'',state.time||0,state.age||0,!!state.blink);lcdOut();return sc.toDataURL('image/png');}
+    finally {window.Date = RealDate;}
+  }
+};
+if (!new URLSearchParams(location.search).has('test')) frame();
+
+</script>
+</body>
+</html>

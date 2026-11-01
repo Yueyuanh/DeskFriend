@@ -25,6 +25,12 @@ git clone --recurse-submodules https://github.com/Yueyuanh/DeskFriend.git
 git submodule update --init --recursive
 ```
 
+## LCD 表情演示
+
+[ESP32-S3-LCD-Test](ESP32/ESP32-S3-LCD/ESP32-S3-LCD-Test/README.md) 是 Waveshare ESP32-S3-LCD-1.28 **非触摸版**的 FreeRTOS/LVGL 工程：板端独立绘制面部动画，网页仅同步交互状态，支持字幕、进度、聊天、火柴人与 IMU 晃动触发。
+
+首次构建需从配置模板填写本机 Wi-Fi 凭据，并从本地 Windows 字体生成资源；凭据和系统字体二进制不随仓库发布。构建、COM10 烧录和实际验证说明见工程 README 与 `docs/LVGL_STATE_SYNC.md`。
+
 ## 大型依赖
 
 主仓库不保存可在线恢复的大型第三方库、重复的供应商压缩包或本机构建产物。相关版本和恢复步骤见：

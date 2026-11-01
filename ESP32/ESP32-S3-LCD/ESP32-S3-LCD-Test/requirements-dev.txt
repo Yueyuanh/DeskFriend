@@ -1,0 +1,4 @@
+# Font generation and framebuffer comparisons (not required for normal PIO builds).
+fonttools==4.68.0
+Pillow==13.0.0
+pyserial==3.5

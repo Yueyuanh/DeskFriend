@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ESP32-S3-CAM 端侧视觉</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#10141b;color:#eef2f7}
+    body{max-width:920px;margin:0 auto;padding:20px}h1{font-size:1.35rem;margin:0 0 16px}
+    .grid{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px}.card{background:#1a212b;border:1px solid #2c3745;border-radius:12px;padding:14px}
+    .shot{position:relative;aspect-ratio:4/3;background:#05070a;border-radius:8px;overflow:hidden}
+    img{display:block;width:100%;height:100%;object-fit:contain}
+    .boxes{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+    .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;line-height:1.5;color:#f0b4b4;font-size:.95rem}
+    .overlay[hidden]{display:none}
+    .fps-badge{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:6px;background:rgba(5,7,10,.62);color:#eef2f7;font-size:.78rem;font-variant-numeric:tabular-nums;letter-spacing:.02em;pointer-events:none}
+    .fps-badge.warn{color:#f0b4b4}
+    .row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #2c3745;padding:9px 0}.row:last-of-type{border-bottom:0}
+    .value{font-variant-numeric:tabular-nums;color:#8ee6ad}.value.warn{color:#f0b4b4}.hint{color:#aab5c2;font-size:.88rem;line-height:1.45}
+    button{border:0;border-radius:7px;padding:9px 12px;margin:4px 4px 0 0;background:#3d82f6;color:white;cursor:pointer;font-size:.9rem}button.secondary{background:#485464}button.danger{background:#8a3434}
+    .chart-card{margin-top:16px}
+    .chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px}
+    .chart-head h2{font-size:1rem;margin:0;font-weight:600}
+    .temp-now{font-variant-numeric:tabular-nums;font-size:1.5rem;font-weight:600;color:#6fb3ff}
+    .temp-now small{font-size:.8rem;color:#aab5c2;font-weight:400}
+    svg{display:block;width:100%;height:auto;overflow:visible;touch-action:none}
+    .axis{fill:#7d8a99;font-size:9px}.grid-line{stroke:#2c3745;stroke-width:1}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <h1>ESP32-S3-CAM 端侧视觉</h1>
+  <div class="grid">
+    <div class="card">
+      <div class="shot"><img id="frame" src="/stream" alt="实时画面"><svg id="boxes" class="boxes" viewBox="0 0 320 240" preserveAspectRatio="none" aria-hidden="true"></svg><div id="overlay" class="overlay">等待摄像头画面…</div><div id="fpsBadge" class="fps-badge">-- fps</div></div>
+      <p class="hint">MJPEG 实时流，检测框叠加在画面上。人体检测、人脸检测与识别都在 ESP32-S3 上运行。</p>
+    </div>
+    <div class="card">
+      <div class="row"><span>Wi-Fi</span><span id="wifi" class="value">连接中</span></div>
+      <div class="row"><span>摄像头</span><span id="cam" class="value">连接中</span></div>
+      <div class="row"><span>推理</span><span id="infer" class="value">运行中</span></div>
+      <div class="row"><span>人脸库</span><span id="db" class="value">-</span></div>
+      <div class="row"><span>人体</span><span id="human" class="value">-</span></div>
+      <div class="row"><span>人脸</span><span id="face" class="value">-</span></div>
+      <div class="row"><span>识别</span><span id="identity" class="value">未识别</span></div>
+      <div class="row"><span>推理 FPS</span><span id="fps" class="value">-</span></div>
+      <div class="row"><span>单帧耗时</span><span id="latency" class="value">-</span></div>
+      <div class="row"><span>PSRAM</span><span id="psram" class="value">-</span></div>
+      <button id="faceBtn" class="danger" onclick="toggleModel('face')">停止人脸检测</button>
+      <button id="humanBtn" class="danger" onclick="toggleModel('human')">停止人体检测</button>
+      <button onclick="post('/api/enroll')">注册当前人脸</button>
+      <button class="secondary" onclick="post('/api/clear')">清空人脸库</button>
+      <p id="message" class="hint"></p>
+    </div>
+  </div>
+
+  <div class="card chart-card">
+    <div class="chart-head"><h2>芯片温度</h2><span id="tempNow" class="temp-now">--<small> °C</small></span></div>
+    <svg id="chart" viewBox="0 0 320 130" role="img" aria-label="ESP32-S3 芯片温度最近三分钟变化曲线"></svg>
+    <p class="hint">每 2 秒采样，保留最近 3 分钟。OV5640 模组本身没有温度传感器，所以没有摄像头温度曲线。</p>
+  </div>
+
+  <script>
+    const $=id=>document.getElementById(id);
+    const img=$('frame'),overlay=$('overlay');
+    let faceOn=true,humanOn=true,lastSeq=-1,lastSeqAt=Date.now();
+
+    async function post(url){try{const r=await fetch(url,{method:'POST'});const j=await r.json();$('message').textContent=j.message||'已提交';}catch(e){$('message').textContent=e;}}
+    // "face" and "human" switch independently, so one model can be measured alone.
+    async function toggleModel(kind){
+      const on=kind==='face'?faceOn:humanOn;
+      try{await fetch('/api/inference?'+kind+'='+(on?'0':'1'));}catch(e){$('message').textContent=e;}
+      state();
+    }
+
+    async function state(){try{const s=await (await fetch('/api/state',{cache:'no-store'})).json();
+      $('wifi').textContent=s.wifi?s.ip:'未连接';$('wifi').className='value'+(s.wifi?'':' warn');
+      faceOn=s.face_enabled;humanOn=s.human_enabled;
+      $('infer').textContent=faceOn&&humanOn?'人脸 + 人体':faceOn?'仅人脸':humanOn?'仅人体':'已全部停止';
+      $('infer').className='value'+(faceOn||humanOn?'':' warn');
+      $('faceBtn').textContent=faceOn?'停止人脸检测':'启动人脸检测';
+      $('faceBtn').className=faceOn?'danger':'';
+      $('humanBtn').textContent=humanOn?'停止人体检测':'启动人体检测';
+      $('humanBtn').className=humanOn?'danger':'';
+      // Stream frame rate, measured on the device for every published frame.
+      $('fpsBadge').textContent=s.camera_fps.toFixed(1)+' fps';
+      $('fpsBadge').className='fps-badge'+(s.camera_fps<1?' warn':'');
+      $('db').textContent=s.face_db_count+' 张';$('human').textContent=s.human_count+' 人';
+      $('face').textContent=s.face_count+' 张';$('identity').textContent=s.identity||'未识别';
+      $('fps').textContent=s.inference_fps.toFixed(1);$('latency').textContent=s.inference_ms+' ms';
+      $('psram').textContent=(s.free_psram/1048576).toFixed(2)+' MB';$('message').textContent=s.message||'';
+      if(s.frame_seq!==lastSeq){lastSeq=s.frame_seq;lastSeqAt=Date.now();$('cam').textContent='画面正常';$('cam').className='value';}
+      else if(Date.now()-lastSeqAt>5000){$('cam').textContent='无信号';$('cam').className='value warn';}
+      drawBoxes(s);
+    }catch(e){$('wifi').textContent='请求失败';$('wifi').className='value warn';}}
+
+    // Detection boxes are drawn on top of the MJPEG frame in frame pixels.
+    function drawBoxes(s){
+      const svg=$('boxes');
+      if(s.frame_w&&s.frame_h)svg.setAttribute('viewBox','0 0 '+s.frame_w+' '+s.frame_h);
+      if(!s.boxes||!s.boxes.length){svg.innerHTML='';return;}
+      const matched=s.identity==='已识别';
+      let firstFace=true,h='';
+      for(const b of s.boxes){
+        let stroke='#aab5c2',dash=' stroke-dasharray="4 3"',label='';
+        if(b.k===1){
+          if(matched&&firstFace){stroke='#8ee6ad';dash='';label='<text x="'+b.x+'" y="'+(b.y-5)+'" fill="'+stroke+'" font-size="12">已识别</text>';}
+          else{stroke='#6fb3ff';dash='';}
+          firstFace=false;
+        }
+        h+='<rect x="'+b.x+'" y="'+b.y+'" width="'+b.w+'" height="'+b.h+'" fill="none" stroke="'+stroke+'" stroke-width="2"'+dash+'/>'+label;
+      }
+      svg.innerHTML=h;
+    }
+
+    img.addEventListener('load',()=>{overlay.hidden=true;});
+    img.addEventListener('error',()=>{overlay.hidden=false;overlay.textContent='摄像头没有画面：MJPEG 流断开';});
+    // If the stream stalls the browser keeps the last frame; reload it.
+    setInterval(()=>{if(Date.now()-lastSeqAt>5000)img.src='/stream?ts='+Date.now();},6000);
+
+    // ---- temperature chart (single series, no legend needed) ----
+    const chart=$('chart'),W=320,H=130,L=34,R=8,T=12,B=24;
+    function drawChart(v){
+      const g=chart;
+      if(v.length<2){g.innerHTML='<text x="160" y="66" text-anchor="middle" class="axis">采集中…</text>';return;}
+      const mn=Math.min(...v),mx=Math.max(...v);
+      const lo=Math.floor((mn-1)/5)*5,hi=Math.ceil((mx+1)/5)*5,span=Math.max(hi-lo,5);
+      const x=i=>L+(W-L-R)*i/(v.length-1),y=t=>T+(H-T-B)*(1-(t-lo)/span);
+      let s='';
+      for(const t of [lo,(lo+hi)/2,hi]){
+        s+=`<line class="grid-line" x1="${L}" y1="${y(t).toFixed(1)}" x2="${W-R}" y2="${y(t).toFixed(1)}"/>`;
+        s+=`<text class="axis" x="${L-6}" y="${(y(t)+3).toFixed(1)}" text-anchor="end">${t}°</text>`;
+      }
+      const pts=v.map((t,i)=>`${x(i).toFixed(1)},${y(t).toFixed(1)}`).join(' ');
+      s+=`<polyline points="${pts}" fill="none" stroke="#6fb3ff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      s+=`<polygon points="${L},${H-B} ${pts} ${W-R},${H-B}" fill="#6fb3ff" opacity=".10"/>`;
+      s+=`<text class="axis" x="${L}" y="${H-6}">3 分钟前</text><text class="axis" x="${W-R}" y="${H-6}" text-anchor="end">现在</text>`;
+      s+=`<line id="xh" x1="0" y1="${T}" x2="0" y2="${H-B}" stroke="#7d8a99" stroke-width="1" visibility="hidden"/>`;
+      s+=`<circle id="dot" r="4" fill="#6fb3ff" stroke="#1a212b" stroke-width="2" visibility="hidden"/>`;
+      s+=`<text id="tip" class="axis" visibility="hidden"></text>`;
+      g.innerHTML=s;
+    }
+    let lastTemps=[];
+    chart.addEventListener('pointermove',ev=>{
+      if(lastTemps.length<2)return;
+      const r=chart.getBoundingClientRect(),px=(ev.clientX-r.left)/r.width*W;
+      const i=Math.max(0,Math.min(lastTemps.length-1,Math.round((px-L)/(W-L-R)*(lastTemps.length-1))));
+      const mn=Math.min(...lastTemps),mx=Math.max(...lastTemps),lo=Math.floor((mn-1)/5)*5,hi=Math.ceil((mx+1)/5)*5,span=Math.max(hi-lo,5);
+      const x=L+(W-L-R)*i/(lastTemps.length-1),y=T+(H-T-B)*(1-(lastTemps[i]-lo)/span);
+      const xh=$('xh'),dot=$('dot'),tip=$('tip');
+      if(!xh)return;
+      xh.setAttribute('x1',x);xh.setAttribute('x2',x);xh.setAttribute('visibility','visible');
+      dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('visibility','visible');
+      tip.setAttribute('x',Math.min(x, W-70));tip.setAttribute('y',T+10);tip.setAttribute('visibility','visible');
+      tip.textContent=lastTemps[i].toFixed(1)+' °C';
+    });
+    chart.addEventListener('pointerleave',()=>{for(const id of ['xh','dot','tip']){const e=$(id);if(e)e.setAttribute('visibility','hidden');}});
+
+    async function temps(){try{const d=await (await fetch('/api/temps',{cache:'no-store'})).json();
+      lastTemps=d.chip||[];
+      $('tempNow').innerHTML=(lastTemps.length?lastTemps[lastTemps.length-1].toFixed(1):'--')+'<small> °C</small>';
+      drawChart(lastTemps);
+    }catch(e){$('tempNow').innerHTML='--<small> °C</small>';}}
+
+    state();temps();setInterval(state,300);setInterval(temps,4000);
+  </script>
+</body>
+</html>

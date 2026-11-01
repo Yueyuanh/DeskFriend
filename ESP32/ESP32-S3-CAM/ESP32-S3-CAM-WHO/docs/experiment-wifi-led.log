@@ -1,0 +1,151 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x1664
+load:0x403c8700,len:0xf7c
+load:0x403cb700,len:0x31ec
+entry 0x403c8924
+I (25) boot: ESP-IDF 6.1.0 2nd stage bootloader
+I (25) boot: compile time Nov  2 2026 03:18:57
+I (25) boot: Multicore bootloader
+I (25) boot: chip revision: v0.2
+I (28) boot: efuse block revision: v1.3
+I (31) qio_mode: Enabling default flash chip QIO
+I (36) boot.esp32s3: Boot SPI Speed : 80MHz
+I (40) boot.esp32s3: SPI Mode       : QIO
+I (43) boot.esp32s3: SPI Flash Size : 16MB
+I (47) boot: Enabling RNG early entropy source...
+I (52) boot: Partition Table:
+I (54) boot: ## Label            Usage          Type ST Offset   Length
+I (61) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (67) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (74) boot:  2 factory          factory app      00 00 00010000 00a00000
+I (80) boot:  3 storage          Unknown data     01 82 00a10000 00100000
+I (87) boot: End of partition table
+I (90) esp_image: segment 0: paddr=00010020 vaddr=3c1a0020 size=220bfch (2231292) map
+I (442) esp_image: segment 1: paddr=00230c24 vaddr=3fca2500 size=05f44h ( 24388) load
+I (447) esp_image: segment 2: paddr=00236b70 vaddr=40378000 size=094a8h ( 38056) load
+I (455) esp_image: segment 3: paddr=00240020 vaddr=42000020 size=193848h (1652808) map
+I (711) esp_image: segment 4: paddr=003d3870 vaddr=403814a8 size=10fe4h ( 69604) load
+I (725) esp_image: segment 5: paddr=003e485c vaddr=50000000 size=00024h (    36) load
+I (737) boot: Loaded app from partition at offset 0x10000
+I (737) boot: Disabling RNG early entropy source...
+I (747) octal_psram: vendor id    : 0x0d (AP)
+I (747) octal_psram: dev id       : 0x02 (generation 3)
+I (747) octal_psram: density      : 0x03 (64 Mbit)
+I (749) octal_psram: good-die     : 0x01 (Pass)
+I (753) octal_psram: Latency      : 0x01 (Fixed)
+I (758) octal_psram: VCC          : 0x01 (3V)
+I (762) octal_psram: SRF          : 0x01 (Fast Refresh)
+I (767) octal_psram: BurstType    : 0x01 (Hybrid Wrap)
+I (772) octal_psram: BurstLen     : 0x01 (32 Byte)
+I (776) octal_psram: Readlatency  : 0x02 (10 cycles@Fixed)
+I (781) octal_psram: DriveStrength: 0x00 (1/1)
+I (786) MSPI Timing: Enter psram timing tuning
+I (790) esp_psram: Found 8MB PSRAM device
+I (793) esp_psram: Speed: 80MHz
+I (967) mmu_psram: Read only data copied and mapped to SPIRAM
+I (1109) mmu_psram: Instructions copied and mapped to SPIRAM
+I (1110) cpu_start: Multicore app
+I (1326) esp_psram: SPI SRAM memory test OK
+I (1334) cpu_start: GPIO 44 and 43 are used as console UART I/O pins
+I (1335) cpu_start: Pro cpu start user code
+I (1335) cpu_start: cpu freq: 240000000 Hz
+I (1337) app_init: Application information:
+I (1341) app_init: Project name:     esp32_s3_cam_who
+I (1346) app_init: App version:      d3ace3b-dirty
+I (1350) app_init: Compile time:     Nov  2 2026 03:16:43
+I (1355) app_init: ELF file SHA256:  92b20f5c5...
+I (1360) app_init: ESP-IDF:          6.1.0
+I (1363) efuse_init: Min chip rev:     v0.0
+I (1367) efuse_init: Max chip rev:     v0.99 
+I (1371) efuse_init: Chip rev:         v0.2
+I (1375) heap_init: Initializing. RAM available for dynamic allocation:
+I (1382) heap_init: At 3FCAE3B0 len 0003B360 (236 KiB): RAM
+I (1387) heap_init: At 3FCE9710 len 00005724 (21 KiB): RAM
+I (1392) heap_init: At 600FE000 len 00001FE8 (7 KiB): RTCRAM
+I (1398) esp_psram: Adding pool of 4288K of PSRAM memory to heap allocator
+I (1404) esp_psram: Adding pool of 60K of PSRAM memory gap generated due to end address alignment of drom to the heap allocator
+I (1416) spi_flash: detected chip: boya
+I (1419) spi_flash: flash io: qio
+I (1422) sleep_gpio: Configure to isolate all GPIO pins in sleep state
+I (1428) sleep_gpio: Enable automatic switching of GPIO sleep configuration
+I (1435) main_task: Started on CPU0
+I (1447) esp_psram: Reserving pool of 32K of internal memory for DMA/internal allocations
+I (1448) main_task: Calling app_main()
+I (1474) deskfriend_led: status LED started on GPIO48 (red blink = no Wi-Fi, green = connected)
+I (1475) pp: pp rom version: e7ae62f
+I (1476) net80211: net80211 rom version: e7ae62f
+I (1481) wifi:wifi driver task: 3fcee8fc, prio:23, stack:6656, core=0
+I (1490) wifi:wifi firmware version: e12a754
+I (1490) wifi:wifi certification version: v7.0
+I (1494) wifi:config NVS flash: enabled
+I (1497) wifi:config nano formatting: disabled
+I (1502) wifi:Init data frame dynamic rx buffer num: 32
+I (1507) wifi:Init static rx mgmt buffer num: 5
+I (1511) wifi:Init management short buffer num: 32
+I (1515) wifi:Init dynamic tx buffer num: 32
+I (1519) wifi:Init static tx FG buffer num: 2
+I (1523) wifi:Init static rx buffer size: 1600
+I (1528) wifi:Init static rx buffer num: 10
+I (1531) wifi:Init dynamic rx buffer num: 32
+I (1536) wifi_init: rx ba win: 6
+I (1538) wifi_init: accept mbox: 6
+I (1541) wifi_init: tcpip mbox: 32
+I (1545) wifi_init: udp mbox: 6
+I (1547) wifi_init: tcp mbox: 6
+I (1550) wifi_init: tcp tx win: 5760
+I (1554) wifi_init: tcp rx win: 5760
+I (1557) wifi_init: tcp mss: 1440
+I (1560) wifi_init: WiFi IRAM OP enabled
+I (1564) wifi_init: WiFi RX IRAM OP enabled
+I (1568) phy_init: phy_version 712,87e8c20e,Apr 13 2026,18:51:10
+I (1604) wifi:mode : sta (10:51:db:84:be:68)
+I (1604) wifi:enable tsf
+I (1605) deskfriend_wifi: STA started, ssid=<ssid>, static ip=192.168.137.50
+I (1607) s3 ll_cam: DMA Channel=0
+I (1610) cam_hal: cam init ok
+I (1613) sccb-ng: pin_sda 4 pin_scl 5
+I (1616) sccb-ng: sccb_i2c_port=1
+I (1630) camera: Camera PID=0x5640 VER=0x00 MIDL=0x00 MIDH=0x00
+I (1630) camera: Detected OV5640 camera
+I (1630) camera: Detected camera at address=0x3c
+I (2319) cam_hal: PSRAM DMA mode disabled
+I (2319) cam_hal: buffer_size: 16384, half_buffer_size: 1024, node_buffer_size: 1024, node_cnt: 16, total_cnt: 15
+I (2321) cam_hal: Allocating 15360 Byte frame buffer in PSRAM
+I (2327) cam_hal: Allocating 15360 Byte frame buffer in PSRAM
+I (2332) cam_hal: Allocating 15360 Byte frame buffer in PSRAM
+I (2338) cam_hal: cam config ok
+I (2352) ov5640: Set PLL: bypass: 0, multiplier: 180, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4
+I (2353) ov5640: Calculated XVCLK: 20000000 Hz, REFIN: 10000000 Hz, VCO: 1800000000 Hz, PLL_CLK: 180000000 Hz, SYSCLK: 45000000 Hz, PCLK: 11250000 Hz
+I (2388) deskfriend_camera: sensor PID 0x5640, format JPEG, QVGA, quality 12, fb_count 3
+I (2388) deskfriend_camera: camera ready, PSRAM free=4402108 bytes
+W (2392) FbsLoader: CONFIG_SPIRAM_RODATA or CONFIG_SPIRAM_XIP_FROM_PSRAM option is on, fbs model is copied to PSRAM.
+I (2392) deskfriend_web: web server started on port 80
+I (2392) deskfriend_app: tasks started: vision(core 1, prio 5), web(core 0, prio 3)
+I (2413) main_task: Returned from app_main()
+W (2497) dl::Model: minimize() will delete unused inference variables, breaking model testing/debugging.
+W (2499) FbsLoader: CONFIG_SPIRAM_RODATA or CONFIG_SPIRAM_XIP_FROM_PSRAM option is on, fbs model is copied to PSRAM.
+W (2544) dl::Model: minimize() will delete unused inference variables, breaking model testing/debugging.
+W (2546) FbsLoader: CONFIG_SPIRAM_RODATA or CONFIG_SPIRAM_XIP_FROM_PSRAM option is on, fbs model is copied to PSRAM.
+W (2568) dl::Model: minimize() will delete unused inference variables, breaking model testing/debugging.
+W (2569) FbsLoader: CONFIG_SPIRAM_RODATA or CONFIG_SPIRAM_XIP_FROM_PSRAM option is on, fbs model is copied to PSRAM.
+W (2674) dl::Model: minimize() will delete unused inference variables, breaking model testing/debugging.
+W (4012) deskfriend_wifi: Wi-Fi disconnected (reason 201), retrying; status LED stays red
+W (6420) deskfriend_wifi: Wi-Fi disconnected (reason 201), retrying; status LED stays red
+I (6423) wifi:new:<11,2>, old:<1,0>, ap:<255,255>, sta:<11,2>, prof:1, snd_ch_cfg:0x0
+I (6424) wifi:state: init -> auth (0xb0)
+I (6435) wifi:state: auth -> assoc (0x0)
+I (6438) wifi:state: assoc -> run (0x10)
+I (6450) wifi:connected with <ssid>, aid = 1, channel 11, 40D, bssid = f6:8c:9d:70:e6:32
+I (6451) wifi:security: WPA2-PSK, phy: bgn, rssi: -56, cipher(pairwise:0x3, group:0x3), pmf:0
+I (6459) wifi:pm start, type: 1
+
+I (6459) wifi:dp: 1, bi: 102400, li: 3, scale listen interval from 307200 us to 307200 us
+I (6467) wifi:set rx beacon pti, rx_bcn_pti: 0, bcn_timeout: 25000, mt_pti: 0, mt_time: 10000
+I (6476) esp_netif_handlers: sta ip: 192.168.137.50, mask: 255.255.255.0, gw: 192.168.137.1
+I (6484) deskfriend_wifi: Wi-Fi connected, IP: 192.168.137.50
+I (6489) deskfriend_wifi: Web UI: http://192.168.137.50/
+I (6542) wifi:AP's beacon interval = 102400 us, DTIM period = 1

@@ -40,6 +40,7 @@ SemaphoreHandle_t s_state_mutex = nullptr;
 SemaphoreHandle_t s_request_mutex = nullptr;
 bool s_enroll_request = false;
 bool s_clear_request = false;
+int s_frame_size_request = -1;  // -1: none, else a framesize_t value
 
 bool lock(SemaphoreHandle_t mutex)
 {
@@ -265,6 +266,33 @@ void state_set_frame_size(uint16_t width, uint16_t height)
     s_state.frame_width = width;
     s_state.frame_height = height;
     xSemaphoreGive(s_state_mutex);
+}
+
+void state_request_frame_size(int frame_size)
+{
+    if (!lock(s_request_mutex)) {
+        return;
+    }
+    // A newer request replaces the pending one: the UVC commit path invokes
+    // stop then start back to back, and only the final size needs applying.
+    s_frame_size_request = frame_size;
+    xSemaphoreGive(s_request_mutex);
+}
+
+bool state_take_frame_size_request(int *frame_size)
+{
+    bool requested = false;
+    if (lock(s_request_mutex)) {
+        if (s_frame_size_request >= 0) {
+            requested = true;
+            if (frame_size) {
+                *frame_size = s_frame_size_request;
+            }
+            s_frame_size_request = -1;
+        }
+        xSemaphoreGive(s_request_mutex);
+    }
+    return requested;
 }
 
 void state_request_enroll()

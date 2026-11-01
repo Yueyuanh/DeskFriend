@@ -47,3 +47,35 @@ CONFIG_HUMAN_FACE_DETECT_MSRMNP_S8_V1=y
 CONFIG_HUMAN_FACE_FEAT_MODEL_IN_FLASH_RODATA=y
 CONFIG_FLASH_HUMAN_FACE_FEAT_MFN_S8_V1=y
 CONFIG_HUMAN_FACE_FEAT_MFN_S8_V1=y
+# USB UVC webcam on the OTG Type-C port (espressif/usb_device_uvc).
+# Full-speed internal PHY is the ESP32-S3 OTG port (GPIO19/20).
+CONFIG_TINYUSB_RHPORT_FS=y
+# Friendly name shown by the PC when the camera is opened.
+CONFIG_TUSB_MANUFACTURER="DeskFriend"
+CONFIG_TUSB_PRODUCT="DeskFriend Camera"
+CONFIG_TUSB_SERIAL_NUM="DF-CAM-01"
+CONFIG_FORMAT_MJPEG_CAM1=y
+CONFIG_UVC_MODE_ISOC_CAM1=y
+# Advertise four host-selectable modes. QVGA is the default (fast Wi-Fi stream
+# and inference); the vision task applies a host's choice by reinitializing the
+# sensor between frames, so Wi-Fi and the face pipeline follow the same geometry.
+CONFIG_FRAMESIZE_QVGA=y
+CONFIG_UVC_CAM1_FRAMERATE=15
+CONFIG_UVC_CAM1_MULTI_FRAMESIZE=y
+# Multi-frame slot 1: VGA 640x480. Full-speed isochronous tops out near
+# 512 KB/s, so 10 fps is realistic for ~40 KB MJPEG frames.
+CONFIG_UVC_MULTI_FRAME_WIDTH_1=640
+CONFIG_UVC_MULTI_FRAME_HEIGHT_1=480
+CONFIG_UVC_MULTI_FRAME_FPS_1=10
+# Multi-frame slot 2: HVGA 480x320.
+CONFIG_UVC_MULTI_FRAME_WIDTH_2=480
+CONFIG_UVC_MULTI_FRAME_HEIGHT_2=320
+CONFIG_UVC_MULTI_FRAME_FPS_2=15
+# Multi-frame slot 3: SVGA 800x600. Useful for stills/post-processing; the
+# ESP-DL pipeline runs well below 5 fps at this size.
+CONFIG_UVC_MULTI_FRAME_WIDTH_3=800
+CONFIG_UVC_MULTI_FRAME_HEIGHT_3=600
+CONFIG_UVC_MULTI_FRAME_FPS_3=5
+# Keep USB work off core 1 so face detection keeps its core.
+CONFIG_UVC_TINYUSB_TASK_CORE=0
+CONFIG_UVC_CAM1_TASK_CORE=0

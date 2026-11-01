@@ -5,7 +5,7 @@
 
 #include "esp_err.h"
 
-// One face box in frame pixel coordinates (320x240 QVGA).
+// One face box in frame pixel coordinates (frame_width x frame_height).
 struct DetectionBox {
     int16_t x = 0;
     int16_t y = 0;
@@ -78,7 +78,15 @@ uint32_t state_frame_seq();
 
 // Detection boxes for the newest analysed frame, drawn by the web UI.
 void state_set_boxes(const DetectionBox *boxes, size_t count);
+// Frame geometry of the newest published JPEG. Updated on every frame, so it
+// tracks sensor reconfiguration driven by the UVC host.
 void state_set_frame_size(uint16_t width, uint16_t height);
+
+// Camera frame size (framesize_t value, kept as int so callers do not need
+// esp_camera.h). The UVC host posts a request here; the vision task owns the
+// sensor and consumes it between frames. The newest request wins.
+void state_request_frame_size(int frame_size);
+bool state_take_frame_size_request(int *frame_size);
 
 // Enrollment / clear commands: the web task posts, the vision task consumes.
 void state_request_enroll();

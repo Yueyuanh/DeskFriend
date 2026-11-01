@@ -1,3 +1,6 @@
 dependencies:
   espressif/esp32-camera: "*"
   espressif/human_face_recognition: "~0.3.3"
+  # usb_device_uvc 1.3.1 is vendored in components/usb_device_uvc: upstream's
+  # CMakeLists adds usb_descriptors.c as INTERFACE_SOURCES, which PlatformIO
+  # cannot build (duplicate object target). See that CMakeLists for the fix.

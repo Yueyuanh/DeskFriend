@@ -2,6 +2,27 @@
 
 本文件面向项目维护者，按时间倒序记录主仓库的关键提交信息。
 
+## 2026-11-02 - `25acdfe` `refactor(esp32-cam): organize sources, docs and tools by module`
+
+**类型：** ESP32-S3-CAM 固件工程整理
+**范围：** `ESP32/ESP32-S3-CAM/ESP32-S3-CAM-WHO`
+
+- `src/` 与 `include/` 按模块拆分：core（共享状态）、vision（摄像头与人脸流水线）、web（HTTP 与页面）、net（Wi-Fi）、board（状态灯与温度）。
+- 构建脚本 `prebuild_models.py` 移入 `tools/`，`platformio.ini` 的 `extra_scripts`、`gen_html.py` 的输入输出路径同步更新；新增工程、docs、tools 三份 README。
+- `docs/` 按 reports / logs / data / reference / screenshots 分类，报告内引用的路径同步修改；截图目录整目录加入 git 忽略。
+- 删除 PlatformIO 默认的空 `lib/`、`test/` 脚手架，无用的 `include/README`；固件行为与接口未改动。
+- 整理后完成一次完整编译：Flash 34.2%、RAM 15.9%。期间发现并重新安装了不完整的 esp-dl 3.3.14 组件，`dependencies.lock` 未变化。
+
+## 2026-11-02 - `1ce25e5` `chore: ignore generated UI screenshots`
+
+- 将网页截图 `docs/ui*.png` 加入项目忽略规则，避免把含真人画面的截图提交到公开仓库。
+
+## 2026-11-02 - `722eaa2` `refactor(vision): drop pedestrian detection, keep face recognition only`
+
+- 移除 PICO 行人检测模型、人体计数和对应网页开关，只保留 MSRMNP 人脸检测 + MFN 人脸识别。
+- 固件从 4,031,683 B（38.4%）降到 3,588,631 B（34.2%）；空场景推理从 5.55 fps / 178 ms 提升到 11.1 fps / 47 ms，PSRAM 空闲增加约 1.3 MB。
+- 带人体检测的完整版本保留在分支 `feat/face-human-switches`；实测数据见 `docs/reports/performance-report.html`。
+
 ## 2026-11-01 - `feat(lcd): add LVGL face state synchronization`
 
 **类型：** LCD 固件与网页交互
